@@ -1,6 +1,6 @@
 import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { message, open } from "@tauri-apps/plugin-dialog";
+import { open } from "@tauri-apps/plugin-dialog";
 import { openUrl } from "@tauri-apps/plugin-opener";
 
 interface AppState {
@@ -26,9 +26,32 @@ interface AppState {
   matched_count: number;
 }
 
+type ExportTool = "nlbn" | "npnp";
+type ExportMessageKind = "info" | "warn" | "success" | "error";
+
 interface ExportFinishedPayload {
-  tool: "nlbn" | "npnp";
+  tool: ExportTool;
   success: boolean;
+  message: string;
+}
+
+interface ExportProgressPayload {
+  tool: ExportTool;
+  message: string;
+  determinate: boolean;
+  current: number | null;
+  total: number | null;
+}
+
+interface ExportNotice {
+  kind: ExportMessageKind;
+  message: string;
+}
+
+interface ExportProgressState {
+  determinate: boolean;
+  current: number;
+  total: number;
   message: string;
 }
 
@@ -36,6 +59,7 @@ type Lang = "en" | "zh";
 type NpnpMode = "full" | "schlib" | "pcblib";
 
 interface ExportCardOptions {
+  tool: ExportTool;
   countId: string;
   buttonId: string;
   matchedCount: number;
@@ -107,10 +131,10 @@ const enTranslations: Record<string, string> = {
   "export.pcblib": "PcbLib",
   "export.merge": "Merge",
   "export.libraryName": "Library name:",
-  "export.libraryNameHint": "Used only when Merge is enabled.",
+  "export.libraryNameHint": "Used as the merged SchLib/PcbLib file name when Merge is enabled.",
   "export.parallel": "Parallel jobs:",
   "export.nlbnParallelHint": "nlbn requires --parallel to be at least 1.",
-  "export.npnpParallelHint": "Parallel jobs apply only to non-merged npnp exports and must be at least 1.",
+  "export.npnpParallelHint": "Controls npnp batch concurrency and must be at least 1.",
   "export.continueOnError": "Continue On Error",
   "export.force": "Force",
   "language.desc": "Switch interface language",
@@ -178,10 +202,10 @@ const zhTranslations: Record<string, string> = {
   "export.full": "\u5b8c\u6574",
   "export.merge": "\u5408\u5e76",
   "export.libraryName": "\u5e93\u540d\u79f0:",
-  "export.libraryNameHint": "\u4ec5\u5728\u542f\u7528\u5408\u5e76\u65f6\u4f7f\u7528\u3002",
+  "export.libraryNameHint": "\u542f\u7528\u5408\u5e76\u65f6\u4f5c\u4e3a\u5408\u5e76 SchLib/PcbLib \u6587\u4ef6\u540d\u3002",
   "export.parallel": "\u5e76\u884c\u4efb\u52a1\u6570:",
   "export.nlbnParallelHint": "nlbn \u8981\u6c42 --parallel \u81f3\u5c11\u4e3a 1\u3002",
-  "export.npnpParallelHint": "\u5e76\u884c\u4efb\u52a1\u6570\u4ec5\u9002\u7528\u4e8e\u975e\u5408\u5e76 npnp \u5bfc\u51fa\uff0c\u4e14 --parallel \u81f3\u5c11\u4e3a 1\u3002",
+  "export.npnpParallelHint": "\u63a7\u5236 npnp \u6279\u91cf\u5bfc\u51fa\u5e76\u53d1\u6570\uff0c\u4e14\u81f3\u5c11\u4e3a 1\u3002",
   "export.continueOnError": "\u51fa\u9519\u7ee7\u7eed",
   "export.force": "\u5f3a\u5236",
   "language.desc": "\u5207\u6362\u754c\u9762\u8bed\u8a00",
@@ -202,6 +226,12 @@ let showMatched = true;
 let showHistory = true;
 let matchQuick = true;
 let matchFull = true;
+let lastState: AppState | null = null;
+
+const exportUi: Record<ExportTool, { progress: ExportProgressState | null; notice: ExportNotice | null; resultKind: ExportMessageKind }> = {
+  nlbn: { progress: null, notice: null, resultKind: "info" },
+  npnp: { progress: null, notice: null, resultKind: "info" },
+};
 
 const PATTERN_QUICK = "regex:(?m)^(C\\d{3,})$";
 const PATTERN_FULL = "regex:\u7f16\u53f7[\uff1a:]\\s*(C\\d+)";
@@ -283,28 +313,137 @@ function syncInputValue(id: string, serverValue: string) {
   }
 }
 
+function toolElementId(tool: ExportTool, suffix: string): string {
+  return `${tool}-${suffix}`;
+}
+
+function messageClass(kind: ExportMessageKind): string {
+  switch (kind) {
+    case "warn":
+      return "msg-warn";
+    case "success":
+      return "msg-success";
+    case "error":
+      return "msg-error";
+    default:
+      return "msg-info";
+  }
+}
+
+function rerenderState() {
+  if (lastState) {
+    renderState(lastState);
+  }
+}
+
+function setExportNotice(tool: ExportTool, message: string | null, kind: ExportMessageKind = "warn") {
+  exportUi[tool].notice = message ? { kind, message } : null;
+  rerenderState();
+}
+
+function startExportProgress(tool: ExportTool, message: string) {
+  exportUi[tool].notice = null;
+  exportUi[tool].progress = {
+    determinate: false,
+    current: 0,
+    total: 0,
+    message,
+  };
+  exportUi[tool].resultKind = "info";
+  rerenderState();
+}
+
+function updateExportProgress(payload: ExportProgressPayload) {
+  exportUi[payload.tool].notice = null;
+  exportUi[payload.tool].progress = {
+    determinate: payload.determinate,
+    current: payload.current ?? 0,
+    total: payload.total ?? 0,
+    message: payload.message,
+  };
+  rerenderState();
+}
+
+function finishExportProgress(payload: ExportFinishedPayload) {
+  exportUi[payload.tool].progress = null;
+  exportUi[payload.tool].notice = null;
+  exportUi[payload.tool].resultKind = payload.success ? "success" : "error";
+  rerenderState();
+}
+
+function renderExportProgress(tool: ExportTool, running: boolean, fallbackMessage: string) {
+  const container = $(toolElementId(tool, "progress"));
+  const message = $(toolElementId(tool, "progress-message"));
+  const meta = $(toolElementId(tool, "progress-meta"));
+  const bar = $(toolElementId(tool, "progress-bar")) as HTMLDivElement;
+  const progress =
+    exportUi[tool].progress ??
+    (running
+      ? {
+          determinate: false,
+          current: 0,
+          total: 0,
+          message: fallbackMessage,
+        }
+      : null);
+
+  if (!progress) {
+    container.classList.add("hidden");
+    container.classList.remove("indeterminate");
+    message.textContent = "";
+    meta.textContent = "";
+    bar.style.width = "0%";
+    return;
+  }
+
+  const determinate = progress.determinate && progress.total > 0;
+  const current = determinate ? Math.min(progress.current, progress.total) : 0;
+  const width = determinate ? `${Math.max(8, Math.round((current / progress.total) * 100))}%` : "42%";
+
+  container.classList.remove("hidden");
+  container.classList.toggle("indeterminate", !determinate);
+  message.textContent = progress.message;
+  meta.textContent = determinate ? `${current}/${progress.total}` : "";
+  bar.style.width = width;
+}
+
+function renderExportNotice(tool: ExportTool) {
+  const status = $(toolElementId(tool, "status"));
+  const notice = exportUi[tool].notice;
+  if (!notice) {
+    status.textContent = "";
+    status.className = "msg msg-warn hidden";
+    return;
+  }
+
+  status.textContent = notice.message;
+  status.className = `msg ${messageClass(notice.kind)}`;
+}
+
+function renderExportResult(tool: ExportTool, result: string | null, busy: boolean) {
+  const resultBox = $(toolElementId(tool, "result"));
+  const promptVisible = tool === "nlbn" && !$("nlbn-not-found").classList.contains("hidden");
+  if (!result || busy || exportUi[tool].notice !== null || promptVisible) {
+    resultBox.textContent = "";
+    resultBox.className = "msg msg-info hidden";
+    return;
+  }
+
+  resultBox.textContent = result;
+  resultBox.className = `msg ${messageClass(exportUi[tool].resultKind)}`;
+}
+
 function renderExporterCard(options: ExportCardOptions) {
   $(options.countId).textContent = `${options.matchedCount} ${t("export.itemsReady")}`;
 
+  const busy = options.running || exportUi[options.tool].progress !== null;
   const button = $(options.buttonId) as HTMLButtonElement;
-  button.disabled = options.matchedCount === 0 || options.running;
-  button.textContent = options.running ? t("export.running") : t(options.exportLabelKey);
+  button.disabled = options.matchedCount === 0 || busy;
+  button.textContent = busy ? t("export.running") : t(options.exportLabelKey);
 
-  const status = $(options.statusId);
-  if (options.running) {
-    status.textContent = t(options.runningLabelKey);
-    status.classList.remove("hidden");
-  } else {
-    status.classList.add("hidden");
-  }
-
-  const result = $(options.resultId);
-  if (options.result) {
-    result.textContent = options.result;
-    result.classList.remove("hidden");
-  } else {
-    result.classList.add("hidden");
-  }
+  renderExportProgress(options.tool, busy, t(options.runningLabelKey));
+  renderExportNotice(options.tool);
+  renderExportResult(options.tool, options.result, busy);
 }
 
 function renderState(state: AppState) {
@@ -328,6 +467,7 @@ function renderState(state: AppState) {
   monBtn.textContent = state.monitoring ? t("monitor.monitoring") : t("monitor.paused");
 
   renderExporterCard({
+    tool: "nlbn",
     countId: "nlbn-export-count",
     buttonId: "btn-nlbn-export",
     matchedCount: state.matched_count,
@@ -340,6 +480,7 @@ function renderState(state: AppState) {
   });
 
   renderExporterCard({
+    tool: "npnp",
     countId: "npnp-export-count",
     buttonId: "btn-npnp-export",
     matchedCount: state.matched_count,
@@ -366,11 +507,11 @@ function renderState(state: AppState) {
 
   const parallelInput = $("npnp-parallel-input") as HTMLInputElement;
   const parallelApply = $("btn-apply-npnp-parallel") as HTMLButtonElement;
-  parallelInput.disabled = state.npnp_merge;
-  parallelApply.disabled = state.npnp_merge;
+  parallelInput.disabled = false;
+  parallelApply.disabled = false;
 
   const forceToggle = $("btn-toggle-npnp-force") as HTMLButtonElement;
-  forceToggle.disabled = state.npnp_merge;
+  forceToggle.disabled = false;
 
   $("matched-count").textContent = String(state.matched_count);
   if (showMatched && state.matched.length > 0) {
@@ -451,6 +592,7 @@ function renderHistoryList(items: [string, string][]) {
 
 async function refreshState() {
   const state: AppState = await invoke("get_state");
+  lastState = state;
   renderState(state);
 }
 
@@ -464,8 +606,57 @@ function parsePositiveIntOrFallback(value: string, fallback: number): number {
   return Number.isFinite(parsed) && parsed >= 1 ? parsed : fallback;
 }
 
-function exportDialogTitle(payload: ExportFinishedPayload): string {
-  return payload.success ? `${payload.tool} export finished` : `${payload.tool} export failed`;
+function errorMessage(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message;
+  }
+  return String(error);
+}
+
+function showExportStartResult(tool: ExportTool, result: string): boolean {
+  if (result === "Export started") {
+    setExportNotice(tool, null);
+    return true;
+  }
+
+  exportUi[tool].progress = null;
+  exportUi[tool].notice = { kind: "warn", message: result };
+  rerenderState();
+  return false;
+}
+
+function showExportError(tool: ExportTool, error: string) {
+  exportUi[tool].progress = null;
+  exportUi[tool].notice = { kind: "error", message: error };
+  rerenderState();
+}
+
+let pendingExportConfigWrite: Promise<void> = Promise.resolve();
+
+function queueExportConfigWrite(operation: () => Promise<void>): Promise<void> {
+  const run = pendingExportConfigWrite.then(operation, operation);
+  pendingExportConfigWrite = run.catch(() => {});
+  return run;
+}
+
+async function syncNlbnExportInputs() {
+  const path = ($("nlbn-path-input") as HTMLInputElement).value;
+  const parallelValue = ($("nlbn-parallel-input") as HTMLInputElement).value;
+  const parallel = parsePositiveIntOrFallback(parallelValue, 4);
+
+  await invoke("set_nlbn_path", { path });
+  await invoke("set_nlbn_parallel", { parallel });
+}
+
+async function syncNpnpExportInputs() {
+  const path = ($("npnp-path-input") as HTMLInputElement).value;
+  const libraryName = ($("npnp-library-name-input") as HTMLInputElement).value;
+  const parallelValue = ($("npnp-parallel-input") as HTMLInputElement).value;
+  const parallel = parsePositiveIntOrFallback(parallelValue, 4);
+
+  await invoke("set_npnp_path", { path });
+  await invoke("set_npnp_library_name", { libraryName });
+  await invoke("set_npnp_parallel", { parallel });
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -478,12 +669,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   await listen("clipboard-changed", () => {
     void refreshState();
   });
+  await listen<ExportProgressPayload>("export-progress", (event) => {
+    updateExportProgress(event.payload);
+  });
   await listen<ExportFinishedPayload>("export-finished", async (event) => {
-    const payload = event.payload;
-    await message(payload.message, {
-      title: `SeEx: ${exportDialogTitle(payload)}`,
-      kind: payload.success ? "info" : "error",
-    });
+    finishExportProgress(event.payload);
+    await refreshState();
   });
 
   document.querySelectorAll(".nav-item").forEach((item) => {
@@ -541,13 +732,30 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   $("btn-nlbn-export").addEventListener("click", async () => {
+    startExportProgress("nlbn", t("export.nlbnRunning"));
+    $("nlbn-not-found").classList.add("hidden");
+
     try {
+      await queueExportConfigWrite(async () => {
+        await syncNlbnExportInputs();
+        await refreshState();
+      });
       await invoke("check_nlbn");
-      $("nlbn-not-found").classList.add("hidden");
-      await invoke("nlbn_export");
+      const result = await invoke<string>("nlbn_export");
+      showExportStartResult("nlbn", result);
       await refreshState();
-    } catch {
-      $("nlbn-not-found").classList.remove("hidden");
+    } catch (error) {
+      const details = errorMessage(error);
+      if (details.includes("nlbn not found")) {
+        exportUi.nlbn.progress = null;
+        exportUi.nlbn.notice = null;
+        rerenderState();
+        $("nlbn-not-found").classList.remove("hidden");
+        return;
+      }
+
+      showExportError("nlbn", details);
+      await refreshState();
     }
   });
 
@@ -555,85 +763,121 @@ window.addEventListener("DOMContentLoaded", async () => {
     const selected = await selectDirectory("Select nlbn export directory");
     if (selected) {
       ($("nlbn-path-input") as HTMLInputElement).value = selected;
-      await invoke("set_nlbn_path", { path: selected });
-      await refreshState();
+      await queueExportConfigWrite(async () => {
+        await invoke("set_nlbn_path", { path: selected });
+        await refreshState();
+      });
     }
   });
 
   $("btn-apply-nlbn-path").addEventListener("click", async () => {
     const path = ($("nlbn-path-input") as HTMLInputElement).value;
-    await invoke("set_nlbn_path", { path });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_path", { path });
+      await refreshState();
+    });
   });
 
   $("btn-toggle-nlbn-terminal").addEventListener("click", async () => {
-    await invoke("toggle_nlbn_terminal");
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("toggle_nlbn_terminal");
+      await refreshState();
+    });
   });
 
   $("btn-apply-nlbn-parallel").addEventListener("click", async () => {
     const value = ($("nlbn-parallel-input") as HTMLInputElement).value;
     const parallel = parsePositiveIntOrFallback(value, 4);
-    await invoke("set_nlbn_parallel", { parallel });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_parallel", { parallel });
+      await refreshState();
+    });
   });
 
   $("btn-npnp-export").addEventListener("click", async () => {
-    await invoke("npnp_export");
-    await refreshState();
+    startExportProgress("npnp", t("export.npnpRunning"));
+
+    try {
+      await queueExportConfigWrite(async () => {
+        await syncNpnpExportInputs();
+        await refreshState();
+      });
+      const result = await invoke<string>("npnp_export");
+      showExportStartResult("npnp", result);
+      await refreshState();
+    } catch (error) {
+      showExportError("npnp", errorMessage(error));
+      await refreshState();
+    }
   });
 
   $("btn-browse-npnp-folder").addEventListener("click", async () => {
     const selected = await selectDirectory("Select npnp export directory");
     if (selected) {
       ($("npnp-path-input") as HTMLInputElement).value = selected;
-      await invoke("set_npnp_path", { path: selected });
-      await refreshState();
+      await queueExportConfigWrite(async () => {
+        await invoke("set_npnp_path", { path: selected });
+        await refreshState();
+      });
     }
   });
 
   $("btn-apply-npnp-path").addEventListener("click", async () => {
     const path = ($("npnp-path-input") as HTMLInputElement).value;
-    await invoke("set_npnp_path", { path });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_npnp_path", { path });
+      await refreshState();
+    });
   });
 
   npnpModes.forEach((mode) => {
     $("btn-npnp-mode-" + mode).addEventListener("click", async () => {
-      await invoke("set_npnp_mode", { mode });
-      await refreshState();
+      await queueExportConfigWrite(async () => {
+        await invoke("set_npnp_mode", { mode });
+        await refreshState();
+      });
     });
   });
 
   $("btn-toggle-npnp-merge").addEventListener("click", async () => {
     const active = $("btn-toggle-npnp-merge").classList.contains("active");
-    await invoke("set_npnp_merge", { merge: !active });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_npnp_merge", { merge: !active });
+      await refreshState();
+    });
   });
 
   $("btn-toggle-npnp-continue-on-error").addEventListener("click", async () => {
     const active = $("btn-toggle-npnp-continue-on-error").classList.contains("active");
-    await invoke("set_npnp_continue_on_error", { continue_on_error: !active });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_npnp_continue_on_error", { continueOnError: !active });
+      await refreshState();
+    });
   });
 
   $("btn-toggle-npnp-force").addEventListener("click", async () => {
     const active = $("btn-toggle-npnp-force").classList.contains("active");
-    await invoke("set_npnp_force", { force: !active });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_npnp_force", { force: !active });
+      await refreshState();
+    });
   });
 
   $("btn-apply-npnp-library-name").addEventListener("click", async () => {
     const libraryName = ($("npnp-library-name-input") as HTMLInputElement).value;
-    await invoke("set_npnp_library_name", { library_name: libraryName });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_npnp_library_name", { libraryName });
+      await refreshState();
+    });
   });
 
   $("btn-apply-npnp-parallel").addEventListener("click", async () => {
     const value = ($("npnp-parallel-input") as HTMLInputElement).value;
     const parallel = parsePositiveIntOrFallback(value, 4);
-    await invoke("set_npnp_parallel", { parallel });
-    await refreshState();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_npnp_parallel", { parallel });
+      await refreshState();
+    });
   });
 
   $("btn-save-history").addEventListener("click", async () => {
@@ -695,3 +939,4 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 });
+

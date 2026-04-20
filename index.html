@@ -123,6 +123,15 @@
                 <div class="spacer"></div>
                 <button class="btn-accent" id="btn-nlbn-export" disabled data-i18n="export.exportNlbn">Export nlbn</button>
               </div>
+              <div id="nlbn-progress" class="export-progress hidden" aria-live="polite">
+                <div class="export-progress-head">
+                  <span id="nlbn-progress-message" class="export-progress-message"></span>
+                  <span id="nlbn-progress-meta" class="export-progress-meta"></span>
+                </div>
+                <div class="export-progress-track">
+                  <div id="nlbn-progress-bar" class="export-progress-bar"></div>
+                </div>
+              </div>
               <div id="nlbn-status" class="msg msg-warn hidden"></div>
               <div id="nlbn-result" class="msg msg-info hidden"></div>
               <div id="nlbn-not-found" class="nlbn-prompt hidden">
@@ -164,6 +173,15 @@
                 <span id="npnp-export-count" class="hint">0 items ready</span>
                 <div class="spacer"></div>
                 <button class="btn-accent" id="btn-npnp-export" disabled data-i18n="export.exportNpnp">Export npnp</button>
+              </div>
+              <div id="npnp-progress" class="export-progress hidden" aria-live="polite">
+                <div class="export-progress-head">
+                  <span id="npnp-progress-message" class="export-progress-message"></span>
+                  <span id="npnp-progress-meta" class="export-progress-meta"></span>
+                </div>
+                <div class="export-progress-track">
+                  <div id="npnp-progress-bar" class="export-progress-bar"></div>
+                </div>
               </div>
               <div id="npnp-status" class="msg msg-warn hidden"></div>
               <div id="npnp-result" class="msg msg-info hidden"></div>
@@ -241,7 +259,7 @@
               <div class="about-info">
                 <h3>SeEx</h3>
                 <p class="about-tagline" data-i18n="about.tagline">Clipboard Event Tracker</p>
-                <p class="about-version">v0.2.1</p>
+                <p class="about-version">v0.2.2</p>
                 <p class="about-desc" data-i18n="about.desc">Monitors clipboard in real time, extracts component IDs using keyword or regex, and exports via nlbn or npnp.</p>
                 <div class="about-tech-row">
                   <div class="tech-chip" data-url="https://github.com/linkyourbin/nlbn"><span>nlbn</span></div>

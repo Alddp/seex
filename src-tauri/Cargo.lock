@@ -3798,7 +3798,7 @@ dependencies = [
 
 [[package]]
 name = "seex"
-version = "0.2.1"
+version = "0.2.2"
 dependencies = [
  "arboard",
  "chrono",
@@ -3811,6 +3811,7 @@ dependencies = [
  "tauri-build",
  "tauri-plugin-dialog",
  "tauri-plugin-opener",
+ "tokio",
 ]
 
 [[package]]

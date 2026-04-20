@@ -20,6 +20,15 @@ struct ExportFinishedPayload {
     message: String,
 }
 
+#[derive(Clone, Serialize)]
+struct ExportProgressPayload {
+    tool: &'static str,
+    message: String,
+    determinate: bool,
+    current: Option<usize>,
+    total: Option<usize>,
+}
+
 pub struct ExportRequest {
     pub ids: Vec<String>,
     pub output_path: String,
@@ -30,7 +39,16 @@ pub struct ExportRequest {
 pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_handle: AppHandle) {
     if let Ok(mut s) = state.lock() {
         s.nlbn_running = true;
+        s.nlbn_last_result = None;
     }
+
+    emit_progress(
+        &app_handle,
+        "Preparing nlbn export...",
+        false,
+        None,
+        Some(req.ids.len()),
+    );
 
     thread::spawn(move || {
         let exe_dir = std::env::current_exe()
@@ -53,6 +71,18 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
             Ok(_) => {
                 let temp_str = temp_file.display().to_string();
                 let work_dir = temp_file.parent().unwrap_or(Path::new(".")).to_path_buf();
+
+                emit_progress(
+                    &app_handle,
+                    if req.show_terminal {
+                        "Launching nlbn terminal..."
+                    } else {
+                        "Running nlbn export..."
+                    },
+                    false,
+                    None,
+                    Some(req.ids.len()),
+                );
 
                 let result = if req.show_terminal {
                     run_in_terminal(&temp_str, &req.output_path, req.parallel, &work_dir)
@@ -112,6 +142,13 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
                 let _ = fs::remove_file(work_dir.join("nlbn_export.bat"));
             }
             Err(e) => {
+                emit_progress(
+                    &app_handle,
+                    "nlbn export failed before start",
+                    false,
+                    None,
+                    Some(req.ids.len()),
+                );
                 let msg = format!(
                     "Failed to create temp file: {}\nPath: {}",
                     e,
@@ -134,6 +171,25 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
             }
         }
     });
+}
+
+fn emit_progress(
+    app_handle: &AppHandle,
+    message: impl Into<String>,
+    determinate: bool,
+    current: Option<usize>,
+    total: Option<usize>,
+) {
+    let _ = app_handle.emit(
+        "export-progress",
+        ExportProgressPayload {
+            tool: "nlbn",
+            message: message.into(),
+            determinate,
+            current,
+            total,
+        },
+    );
 }
 
 fn run_in_terminal(

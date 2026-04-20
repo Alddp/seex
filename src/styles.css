@@ -1,4 +1,4 @@
-/* SeEx — Sidebar Layout + Peach Blossom Theme */
+/* SeEx 鈥?Sidebar Layout + Peach Blossom Theme */
 
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
@@ -125,7 +125,7 @@ body {
 #sidebar.collapsed .sidebar-collapse { margin-left: 0; }
 #sidebar.collapsed .sidebar-header { justify-content: center; padding: 16px 8px 12px; }
 
-/* Nav items — distributed evenly across full sidebar height */
+/* Nav items 鈥?distributed evenly across full sidebar height */
 .sidebar-nav {
   list-style: none;
   padding: 12px 10px;
@@ -245,7 +245,7 @@ body {
 .page-body::-webkit-scrollbar-track { background: transparent; }
 .page-body::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
 
-/* Page footer — fixed at bottom, never scrolls */
+/* Page footer 鈥?fixed at bottom, never scrolls */
 .page-footer {
   display: flex;
   align-items: center;
@@ -544,6 +544,61 @@ button {
 /*  MESSAGES                                                           */
 /* ================================================================== */
 
+.export-progress {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, #fffaf7 0%, var(--surface) 100%);
+}
+
+.export-progress-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+}
+
+.export-progress-message {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-2);
+}
+
+.export-progress-meta {
+  font-size: 12px;
+  color: var(--text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+.export-progress-track {
+  position: relative;
+  overflow: hidden;
+  height: 10px;
+  border-radius: 999px;
+  background: var(--primary-lighter);
+}
+
+.export-progress-bar {
+  height: 100%;
+  width: 0%;
+  border-radius: inherit;
+  background: linear-gradient(90deg, var(--primary) 0%, var(--accent) 100%);
+  box-shadow: 0 2px 10px rgba(232,101,108,.2);
+  transition: width .25s ease;
+}
+
+.export-progress.indeterminate .export-progress-bar {
+  width: 42%;
+  animation: export-progress-slide 1.2s ease-in-out infinite;
+}
+
+@keyframes export-progress-slide {
+  0% { transform: translateX(-120%); }
+  100% { transform: translateX(240%); }
+}
+
 .msg {
   margin-top: 10px;
   padding: 10px 14px;
@@ -554,7 +609,8 @@ button {
 }
 .msg-warn { background: var(--accent-light); color: var(--accent); }
 .msg-info  { background: var(--primary-lighter); color: var(--text-2); }
-
+.msg-success { background: #edf8ee; color: #2f7d33; }
+.msg-error { background: var(--danger-light); color: var(--danger); }
 /* nlbn not found prompt */
 .nlbn-prompt {
   margin-top: 10px;
@@ -593,7 +649,7 @@ button {
 }
 
 /* ================================================================== */
-/*  ABOUT PAGE — two-column, no scroll                                 */
+/*  ABOUT PAGE 鈥?two-column, no scroll                                 */
 /* ================================================================== */
 
 .about-body {

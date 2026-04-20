@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.2.1-E8656C" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.2.2-E8656C" alt="version" />
   <img src="https://img.shields.io/badge/license-CC%20BY--NC%204.0-F4845F" alt="license" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-66BB6A" alt="platform" />
 </p>
@@ -139,8 +139,8 @@ npx tauri build
 ```
 
 Installers are generated at:
-- **Windows**: `src-tauri/target/release/bundle/msi/seex_0.2.1_x64_en-US.msi`
-- **Windows**: `src-tauri/target/release/bundle/nsis/seex_0.2.1_x64-setup.exe`
+- **Windows**: `src-tauri/target/release/bundle/msi/seex_0.2.2_x64_en-US.msi`
+- **Windows**: `src-tauri/target/release/bundle/nsis/seex_0.2.2_x64-setup.exe`
 - **macOS**: `.dmg` via GitHub Actions
 - **Linux**: `.deb` / `.AppImage` via GitHub Actions
 
