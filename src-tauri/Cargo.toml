@@ -1,0 +1,24 @@
+[package]
+name = "seex"
+version = "0.2.1"
+authors = ["linkyourbin"]
+edition = "2024"
+
+[lib]
+name = "seex_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2.5.6", features = [] }
+
+[dependencies]
+tauri = { version = "2.10.3", features = [] }
+tauri-plugin-opener = "2.5.3"
+tauri-plugin-dialog = "2.7.0"
+serde = { version = "1.0.228", features = ["derive"] }
+serde_json = "1.0.149"
+arboard = "3.6.1"
+clipboard-master = "4.0.0"
+chrono = "0.4.44"
+regex = "1.12.3"
+npnp = "0.1.2"

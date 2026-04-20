@@ -1,0 +1,268 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="stylesheet" href="/src/styles.css" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>SeEx</title>
+    <script type="module" src="/src/main.ts"></script>
+  </head>
+
+  <body>
+    <div id="layout">
+      <nav id="sidebar">
+        <div class="sidebar-header">
+          <span class="sidebar-brand">SeEx</span>
+          <button id="btn-collapse" class="sidebar-collapse" title="Toggle sidebar">
+            <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
+          </button>
+        </div>
+
+        <ul class="sidebar-nav">
+          <li class="nav-item active" data-page="monitor">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.35-4.35"/></svg>
+            <span class="nav-label" data-i18n="nav.monitor">Monitor</span>
+          </li>
+          <li class="nav-item" data-page="history">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/></svg>
+            <span class="nav-label" data-i18n="nav.history">History</span>
+          </li>
+          <li class="nav-item" data-page="export">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            <span class="nav-label" data-i18n="nav.export">Export</span>
+          </li>
+          <li class="nav-item" data-page="language">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
+            <span class="nav-label" data-i18n="nav.language">Language</span>
+          </li>
+          <li class="nav-item" data-page="about">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+            <span class="nav-label" data-i18n="nav.about">About</span>
+          </li>
+        </ul>
+
+        <div class="sidebar-footer">
+          <div class="sidebar-status">
+            <span class="status-dot-icon"></span>
+            <span class="nav-label" id="sidebar-listening" data-i18n="status.listening">Listening</span>
+          </div>
+        </div>
+      </nav>
+
+      <div id="content-wrapper">
+        <section class="page active" id="page-monitor">
+          <div class="page-header">
+            <h2 data-i18n="nav.monitor">Monitor</h2>
+            <span class="page-desc" id="monitor-status">Keyword: none | H: 0 | M: 0</span>
+          </div>
+          <div class="page-body">
+            <div class="card">
+              <div class="row match-row">
+                <button class="btn-match active" id="btn-match-quick" data-i18n="monitor.quickId">Quick ID</button>
+                <button class="btn-match active" id="btn-match-full" data-i18n="monitor.fullInfo">Full Info</button>
+                <div class="spacer"></div>
+                <button class="btn-monitor active" id="btn-toggle-monitor" data-i18n="monitor.monitoring">Monitoring</button>
+              </div>
+            </div>
+            <div class="card">
+              <div class="card-title-row">
+                <span class="card-title accent"><span data-i18n="monitor.matched">Matched</span> <span class="badge" id="matched-count">0</span></span>
+                <div>
+                  <button class="btn-sm btn-outline" id="btn-copy-ids" data-i18n="monitor.copyIds">Copy IDs</button>
+                  <button class="btn-sm btn-pill active" id="btn-toggle-matched" data-i18n="monitor.show">Show</button>
+                </div>
+              </div>
+              <div id="matched-list" class="scroll-area"></div>
+              <div id="matched-empty" class="empty-state" data-i18n="monitor.noMatches">No matches yet</div>
+            </div>
+            <div class="card">
+              <div class="card-title" data-i18n="monitor.clipboard">Clipboard</div>
+              <div id="latest-preview" class="hidden">
+                <div id="latest-time" class="hint"></div>
+                <textarea id="latest-content" readonly rows="5"></textarea>
+              </div>
+              <div id="history-waiting" class="empty-state" data-i18n="monitor.waiting">Waiting for clipboard...</div>
+            </div>
+          </div>
+          <div class="page-footer">
+            <button class="btn-outline" id="btn-save-history" data-i18n="monitor.saveHistory">Save History</button>
+            <button class="btn-outline" id="btn-save-matched" data-i18n="monitor.exportMatched">Export Matched</button>
+            <div class="spacer"></div>
+            <button class="btn-danger" id="btn-clear-all" data-i18n="monitor.clearAll">Clear All</button>
+            <span id="clear-confirm" class="hidden">
+              <span class="danger-text" data-i18n="monitor.sure">Sure?</span>
+              <button class="btn-danger btn-sm" id="btn-clear-confirm" data-i18n="monitor.yes">Yes</button>
+              <button class="btn-ghost btn-sm" id="btn-clear-cancel" data-i18n="monitor.no">No</button>
+            </span>
+          </div>
+        </section>
+
+        <section class="page" id="page-history">
+          <div class="page-header">
+            <h2 data-i18n="nav.history">History</h2>
+            <span class="page-desc"><span data-i18n="history.desc">Clipboard history</span> (<span id="history-count-badge">0</span> <span data-i18n="history.entries">entries</span>)</span>
+          </div>
+          <div class="page-body">
+            <div class="card card-full">
+              <div id="history-list" class="scroll-area scroll-area-full"></div>
+              <div id="history-empty" class="empty-state" data-i18n="history.empty">No history yet</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-export">
+          <div class="page-header">
+            <h2 data-i18n="nav.export">Export</h2>
+            <span class="page-desc" data-i18n="export.desc">Component export integrations</span>
+          </div>
+          <div class="page-body">
+            <div class="card">
+              <div class="card-title" data-i18n="export.nlbnExport">nlbn Export</div>
+              <div class="row">
+                <span id="nlbn-export-count" class="hint">0 items ready</span>
+                <div class="spacer"></div>
+                <button class="btn-accent" id="btn-nlbn-export" disabled data-i18n="export.exportNlbn">Export nlbn</button>
+              </div>
+              <div id="nlbn-status" class="msg msg-warn hidden"></div>
+              <div id="nlbn-result" class="msg msg-info hidden"></div>
+              <div id="nlbn-not-found" class="nlbn-prompt hidden">
+                <div class="nlbn-prompt-icon">!</div>
+                <div class="nlbn-prompt-text">
+                  <strong data-i18n="export.nlbnNotFound">nlbn is not installed</strong>
+                  <p data-i18n="export.nlbnInstallHint">Install nlbn and add it to your system PATH to use this feature.</p>
+                  <div class="tech-chip" data-url="https://github.com/linkyourbin/nlbn" style="margin-top:8px;display:inline-flex;">
+                    <span>github.com/linkyourbin/nlbn</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card">
+              <div class="card-title" data-i18n="export.nlbnConfig">nlbn Configuration</div>
+              <label class="hint" data-i18n="export.exportDir">Export directory:</label>
+              <div class="row" style="margin-top:4px;">
+                <input type="text" id="nlbn-path-input" />
+                <button class="btn-outline btn-sm" id="btn-browse-nlbn-folder" data-i18n="export.browse">Browse</button>
+                <button class="btn-primary btn-sm" id="btn-apply-nlbn-path" data-i18n="export.apply">Apply</button>
+              </div>
+              <div class="row" style="margin-top:10px;">
+                <button class="btn-outline btn-sm" id="btn-toggle-nlbn-terminal" data-i18n="export.toggleTerminal">Toggle Terminal</button>
+                <span id="nlbn-terminal-status" class="hint"></span>
+              </div>
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.parallel">Parallel jobs:</label>
+              <div class="row" style="margin-top:4px;">
+                <input type="text" id="nlbn-parallel-input" />
+                <button class="btn-primary btn-sm" id="btn-apply-nlbn-parallel" data-i18n="export.apply">Apply</button>
+              </div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.nlbnParallelHint">nlbn requires --parallel to be at least 1.</div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.example">Example: C:\Users\xxx\lib</div>
+            </div>
+
+            <div class="card">
+              <div class="card-title" data-i18n="export.npnpExport">npnp Export</div>
+              <div class="row">
+                <span id="npnp-export-count" class="hint">0 items ready</span>
+                <div class="spacer"></div>
+                <button class="btn-accent" id="btn-npnp-export" disabled data-i18n="export.exportNpnp">Export npnp</button>
+              </div>
+              <div id="npnp-status" class="msg msg-warn hidden"></div>
+              <div id="npnp-result" class="msg msg-info hidden"></div>
+            </div>
+
+            <div class="card">
+              <div class="card-title" data-i18n="export.npnpConfig">npnp Configuration</div>
+              <label class="hint" data-i18n="export.exportDir">Export directory:</label>
+              <div class="row" style="margin-top:4px;">
+                <input type="text" id="npnp-path-input" />
+                <button class="btn-outline btn-sm" id="btn-browse-npnp-folder" data-i18n="export.browse">Browse</button>
+                <button class="btn-primary btn-sm" id="btn-apply-npnp-path" data-i18n="export.apply">Apply</button>
+              </div>
+
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.npnpMode">Export mode:</label>
+              <div class="row" style="margin-top:4px;">
+                <button class="btn-pill btn-sm" id="btn-npnp-mode-full" data-i18n="export.full">Full</button>
+                <button class="btn-pill btn-sm" id="btn-npnp-mode-schlib" data-i18n="export.schlib">SchLib</button>
+                <button class="btn-pill btn-sm" id="btn-npnp-mode-pcblib" data-i18n="export.pcblib">PcbLib</button>
+              </div>
+
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.npnpOptions">Batch options:</label>
+              <div class="row" style="margin-top:4px;">
+                <button class="btn-pill btn-sm" id="btn-toggle-npnp-merge" data-i18n="export.merge">Merge</button>
+                <button class="btn-pill btn-sm" id="btn-toggle-npnp-continue-on-error" data-i18n="export.continueOnError">Continue On Error</button>
+                <button class="btn-pill btn-sm" id="btn-toggle-npnp-force" data-i18n="export.force">Force</button>
+              </div>
+
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.libraryName">Library name:</label>
+              <div class="row" style="margin-top:4px;">
+                <input type="text" id="npnp-library-name-input" />
+                <button class="btn-primary btn-sm" id="btn-apply-npnp-library-name" data-i18n="export.apply">Apply</button>
+              </div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.libraryNameHint">Used only when Merge is enabled.</div>
+
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.parallel">Parallel jobs:</label>
+              <div class="row" style="margin-top:4px;">
+                <input type="text" id="npnp-parallel-input" />
+                <button class="btn-primary btn-sm" id="btn-apply-npnp-parallel" data-i18n="export.apply">Apply</button>
+              </div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.npnpParallelHint">Parallel jobs apply only to non-merged npnp exports and must be at least 1.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-language">
+          <div class="page-header">
+            <h2 data-i18n="nav.language">Language</h2>
+            <span class="page-desc" data-i18n="language.desc">Switch interface language</span>
+          </div>
+          <div class="page-body">
+            <div class="card">
+              <div class="card-title" data-i18n="language.select">Select Language</div>
+              <div class="lang-options">
+                <button class="lang-btn active" id="btn-lang-en">
+                  <span class="lang-flag">EN</span>
+                  <span class="lang-name">English</span>
+                </button>
+                <button class="lang-btn" id="btn-lang-zh">
+                  <span class="lang-flag">ZH</span>
+                  <span class="lang-name">Chinese</span>
+                </button>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-about">
+          <div class="page-header">
+            <h2 data-i18n="nav.about">About</h2>
+          </div>
+          <div class="page-body about-body">
+            <div class="about-layout">
+              <img src="/src/assets/seex.svg" alt="SeEx" class="about-logo" />
+              <div class="about-info">
+                <h3>SeEx</h3>
+                <p class="about-tagline" data-i18n="about.tagline">Clipboard Event Tracker</p>
+                <p class="about-version">v0.2.1</p>
+                <p class="about-desc" data-i18n="about.desc">Monitors clipboard in real time, extracts component IDs using keyword or regex, and exports via nlbn or npnp.</p>
+                <div class="about-tech-row">
+                  <div class="tech-chip" data-url="https://github.com/linkyourbin/nlbn"><span>nlbn</span></div>
+                  <div class="tech-chip"><span>npnp</span></div>
+                  <div class="tech-chip" data-url="https://tauri.app"><img src="/src/assets/tauri.svg" alt="" /><span>Tauri</span></div>
+                  <div class="tech-chip" data-url="https://www.rust-lang.org"><img src="/src/assets/rust.svg" alt="" /><span>Rust</span></div>
+                  <div class="tech-chip" data-url="https://www.typescriptlang.org"><img src="/src/assets/typescript.svg" alt="" /><span>TypeScript</span></div>
+                  <div class="tech-chip" data-url="https://vite.dev"><img src="/src/assets/vite.svg" alt="" /><span>Vite</span></div>
+                </div>
+                <p class="about-platform">Windows &middot; macOS &middot; Linux</p>
+              </div>
+            </div>
+          </div>
+        </section>
+      </div>
+    </div>
+
+    <footer id="status-bar">
+      <span id="status-keyword">Keyword: none</span>
+      <span id="status-counts">H: 0 | M: 0</span>
+      <span id="status-listening" class="status-dot" data-i18n="status.listening">Listening</span>
+    </footer>
+  </body>
+</html>
