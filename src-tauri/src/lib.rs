@@ -357,21 +357,7 @@ fn set_npnp_force(monitor: State<ManagedMonitor>, force: bool) {
 
 #[tauri::command]
 fn check_nlbn() -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    let result = std::process::Command::new("cmd")
-        .args(["/C", "nlbn", "--version"])
-        .output();
-
-    #[cfg(not(target_os = "windows"))]
-    let result = std::process::Command::new("nlbn").arg("--version").output();
-
-    match result {
-        Ok(output) if output.status.success() => {
-            let ver = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            Ok(ver)
-        }
-        _ => Err("nlbn not found".to_string()),
-    }
+    nlbn::check_installation()
 }
 
 #[tauri::command]

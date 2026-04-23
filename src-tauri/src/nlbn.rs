@@ -8,6 +8,8 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
+#[cfg(target_os = "macos")]
+use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
@@ -34,6 +36,25 @@ pub struct ExportRequest {
     pub output_path: String,
     pub show_terminal: bool,
     pub parallel: usize,
+}
+
+pub fn check_installation() -> Result<String, String> {
+    let executable = resolve_nlbn_executable()?;
+    let output = Command::new(&executable)
+        .arg("--version")
+        .output()
+        .map_err(|e| format!("nlbn found but version check failed: {}", e))?;
+
+    if output.status.success() {
+        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            Err("nlbn found but version check failed".to_string())
+        } else {
+            Err(format!("nlbn found but version check failed: {}", stderr))
+        }
+    }
 }
 
 pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_handle: AppHandle) {
@@ -140,6 +161,7 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
                 }
                 let _ = fs::remove_file(&temp_file);
                 let _ = fs::remove_file(work_dir.join("nlbn_export.bat"));
+                let _ = fs::remove_file(work_dir.join("nlbn_export.command"));
             }
             Err(e) => {
                 emit_progress(
@@ -198,15 +220,26 @@ fn run_in_terminal(
     parallel: usize,
     work_dir: &Path,
 ) -> Result<String, String> {
+    let executable = resolve_nlbn_executable()?;
+    let resolved_output_path = expand_user_path(output_path);
+    let use_project_relative = should_use_project_relative(&resolved_output_path);
+
     #[cfg(target_os = "windows")]
     {
+        let project_relative_arg = if use_project_relative {
+            " --project-relative"
+        } else {
+            ""
+        };
         let bat_file = work_dir.join("nlbn_export.bat");
         let bat_content = format!(
-            "@echo on\r\ncd /D \"{}\"\r\nnlbn --full --batch \"{}\" -o \"{}\" --parallel {}\r\necho.\r\necho === Done ===\r\npause\r\n",
+            "@echo on\r\ncd /D \"{}\"\r\n\"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}\r\necho.\r\necho === Done ===\r\npause\r\n",
             work_dir.display(),
+            executable.display(),
             temp_path,
-            output_path,
+            resolved_output_path.display(),
             parallel,
+            project_relative_arg,
         );
         fs::write(&bat_file, &bat_content)
             .map_err(|e| format!("Failed to write batch file: {}", e))?;
@@ -221,14 +254,57 @@ fn run_in_terminal(
             .map_err(|e| format!("Execution failed: {}", e))
     }
 
-    #[cfg(not(target_os = "windows"))]
+    #[cfg(target_os = "macos")]
     {
-        let script = format!(
-            "cd \"{}\" && nlbn --full --batch \"{}\" -o \"{}\" --parallel {}; echo Press Enter to exit; read",
-            work_dir.display(),
-            temp_path,
-            output_path,
+        let project_relative_arg = if use_project_relative {
+            " --project-relative"
+        } else {
+            ""
+        };
+        let script_file = work_dir.join("nlbn_export.command");
+        let script_path = script_file.display().to_string();
+        let script_content = format!(
+            "#!/bin/zsh\ncd {}\n{} --full --batch {} -o {} --parallel {}{}\necho\necho '=== Done ==='\necho 'Press Enter to exit'\nread\n",
+            shell_quote(&work_dir.display().to_string()),
+            shell_quote(&executable.display().to_string()),
+            shell_quote(temp_path),
+            shell_quote(&resolved_output_path.display().to_string()),
             parallel,
+            project_relative_arg,
+        );
+
+        fs::write(&script_file, script_content)
+            .map_err(|e| format!("Failed to write command file: {}", e))?;
+        let mut permissions = fs::metadata(&script_file)
+            .map_err(|e| format!("Failed to read command file metadata: {}", e))?
+            .permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&script_file, permissions)
+            .map_err(|e| format!("Failed to make command file executable: {}", e))?;
+
+        Command::new("open")
+            .args(["-a", "Terminal", &script_path])
+            .spawn()
+            .map(|_| format!("Temp: {}\nCommand: {}", temp_path, script_file.display()))
+            .map_err(|e| format!("Execution failed: {}", e))
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[cfg(not(target_os = "macos"))]
+    {
+        let project_relative_arg = if use_project_relative {
+            " --project-relative"
+        } else {
+            ""
+        };
+        let script = format!(
+            "cd \"{}\" && \"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}; echo Press Enter to exit; read",
+            work_dir.display(),
+            executable.display(),
+            temp_path,
+            resolved_output_path.display(),
+            parallel,
+            project_relative_arg,
         );
         Command::new("gnome-terminal")
             .args(["--", "bash", "-c", &script])
@@ -249,37 +325,56 @@ fn run_in_background(
     parallel: usize,
     work_dir: &Path,
 ) -> Result<String, String> {
+    let executable = resolve_nlbn_executable()?;
+    let resolved_output_path = expand_user_path(output_path);
     let parallel_str = parallel.to_string();
+    let resolved_output_str = resolved_output_path.display().to_string();
+    let use_project_relative = should_use_project_relative(&resolved_output_path);
 
     #[cfg(target_os = "windows")]
-    let result = Command::new("cmd")
-        .args([
-            "/C",
-            "nlbn",
-            "--full",
-            "--batch",
-            temp_path,
-            "-o",
-            output_path,
-            "--parallel",
-            &parallel_str,
-        ])
-        .current_dir(work_dir)
-        .output();
+    let executable_str = executable.display().to_string();
+
+    #[cfg(target_os = "windows")]
+    let result = {
+        let mut command = Command::new("cmd");
+        command
+            .args([
+                "/C",
+                &executable_str,
+                "--full",
+                "--batch",
+                temp_path,
+                "-o",
+                &resolved_output_str,
+                "--parallel",
+                &parallel_str,
+            ])
+            .current_dir(work_dir);
+        if use_project_relative {
+            command.arg("--project-relative");
+        }
+        command.output()
+    };
 
     #[cfg(not(target_os = "windows"))]
-    let result = Command::new("nlbn")
-        .args([
-            "--full",
-            "--batch",
-            temp_path,
-            "-o",
-            output_path,
-            "--parallel",
-            &parallel_str,
-        ])
-        .current_dir(work_dir)
-        .output();
+    let result = {
+        let mut command = Command::new(&executable);
+        command
+            .args([
+                "--full",
+                "--batch",
+                temp_path,
+                "-o",
+                &resolved_output_str,
+                "--parallel",
+                &parallel_str,
+            ])
+            .current_dir(work_dir);
+        if use_project_relative {
+            command.arg("--project-relative");
+        }
+        command.output()
+    };
 
     match result {
         Ok(output) => {
@@ -299,4 +394,135 @@ fn run_in_background(
             e
         )),
     }
+}
+
+fn resolve_nlbn_executable() -> Result<PathBuf, String> {
+    #[cfg(target_os = "windows")]
+    {
+        return Ok(PathBuf::from("nlbn"));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    {
+        if command_available("nlbn") {
+            return Ok(PathBuf::from("nlbn"));
+        }
+
+        for candidate in unix_nlbn_candidates() {
+            if candidate.is_file() {
+                return Ok(candidate);
+            }
+        }
+
+        #[cfg(target_os = "macos")]
+        if let Some(path) = find_with_shell("command -v nlbn") {
+            return Ok(path);
+        }
+
+        #[cfg(not(target_os = "macos"))]
+        if let Some(path) = find_with_shell("command -v nlbn") {
+            return Ok(path);
+        }
+
+        Err("nlbn not found".to_string())
+    }
+}
+
+#[cfg(not(target_os = "windows"))]
+fn command_available(program: &str) -> bool {
+    Command::new(program)
+        .arg("--version")
+        .output()
+        .map(|output| output.status.success())
+        .unwrap_or(false)
+}
+
+#[cfg(not(target_os = "windows"))]
+fn unix_nlbn_candidates() -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+
+    if let Some(home) = std::env::var_os("HOME") {
+        candidates.push(PathBuf::from(&home).join(".cargo/bin/nlbn"));
+        candidates.push(PathBuf::from(&home).join(".local/bin/nlbn"));
+    }
+
+    candidates.push(PathBuf::from("/opt/homebrew/bin/nlbn"));
+    candidates.push(PathBuf::from("/usr/local/bin/nlbn"));
+    candidates.push(PathBuf::from("/opt/local/bin/nlbn"));
+    candidates
+}
+
+#[cfg(target_os = "macos")]
+fn find_with_shell(script: &str) -> Option<PathBuf> {
+    let output = Command::new("/bin/zsh")
+        .args(["-ilc", script])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let resolved = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if resolved.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(resolved);
+    path.is_file().then_some(path)
+}
+
+#[cfg(all(unix, not(target_os = "windows"), not(target_os = "macos")))]
+fn find_with_shell(script: &str) -> Option<PathBuf> {
+    let output = Command::new("/bin/sh")
+        .args(["-lc", script])
+        .output()
+        .ok()?;
+    if !output.status.success() {
+        return None;
+    }
+
+    let resolved = String::from_utf8_lossy(&output.stdout).trim().to_string();
+    if resolved.is_empty() {
+        return None;
+    }
+
+    let path = PathBuf::from(resolved);
+    path.is_file().then_some(path)
+}
+
+fn expand_user_path(path: &str) -> PathBuf {
+    let trimmed = path.trim();
+    if trimmed == "~" {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(trimmed));
+    }
+
+    if let Some(stripped) = trimmed.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(stripped);
+        }
+    }
+
+    PathBuf::from(trimmed)
+}
+
+fn should_use_project_relative(output_path: &Path) -> bool {
+    let Ok(entries) = fs::read_dir(output_path) else {
+        return false;
+    };
+
+    entries.filter_map(|entry| entry.ok()).any(|entry| {
+        entry
+            .path()
+            .extension()
+            .and_then(|ext| ext.to_str())
+            .map(|ext| matches!(ext, "kicad_pro" | "kicad_pcb" | "pro"))
+            .unwrap_or(false)
+    })
+}
+
+#[cfg(target_os = "macos")]
+fn shell_quote(value: &str) -> String {
+    format!("'{}'", value.replace('\'', "'\\''"))
 }
