@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.0-E8656C" alt="version" />
+  <img src="https://img.shields.io/badge/version-0.3.3-E8656C" alt="version" />
   <img src="https://img.shields.io/badge/license-CC%20BY--NC%204.0-F4845F" alt="license" />
   <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-66BB6A" alt="platform" />
 </p>
@@ -123,7 +123,7 @@ The **About** page shows app info, version, and the tech stack. Click on any tec
 - [Node.js](https://nodejs.org/) (v18+)
 - [Tauri CLI](https://tauri.app/start/)
 - `nlbn` in your `PATH` if you want to use the `nlbn` export option
-- Cargo access to resolve the published `npnp` `v0.1.5` crate from crates.io
+- Cargo access to resolve the published `npnp` `v0.1.6` crate from crates.io
 
 ### Development
 
@@ -139,8 +139,8 @@ npx tauri build
 ```
 
 Installers are generated at:
-- **Windows**: `src-tauri/target/release/bundle/msi/seex_0.3.0_x64_en-US.msi`
-- **Windows**: `src-tauri/target/release/bundle/nsis/seex_0.3.0_x64-setup.exe`
+- **Windows**: `src-tauri/target/release/bundle/msi/seex_0.3.3_x64_en-US.msi`
+- **Windows**: `src-tauri/target/release/bundle/nsis/seex_0.3.3_x64-setup.exe`
 - **macOS**: `.dmg` via GitHub Actions
 - **Linux**: `.deb` / `.AppImage` via GitHub Actions
 
