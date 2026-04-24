@@ -66,6 +66,7 @@ interface ExportProgressState {
 interface ImportedSymbol {
   lcsc_part: string;
   symbol_name: string;
+  source_file: string;
 }
 
 interface ImportedSymbolsResponse {
@@ -154,6 +155,16 @@ const enTranslations: Record<string, string> = {
   "imported.noFilterResults": "No imported symbols match the current filter.",
   "imported.copyPart": "Copy LCSC Part",
   "imported.copied": "LCSC Part copied to clipboard.",
+  "imported.edit": "Edit",
+  "imported.deleteSymbol": "Delete",
+  "imported.editorTitle": "Edit Imported Symbol",
+  "imported.editorHint": "Update the symbol name or LCSC Part directly in the KiCad symbol library.",
+  "imported.editorSourceFile": "Source file:",
+  "imported.editorSymbolName": "Symbol Name:",
+  "imported.editorLcscPart": "LCSC Part:",
+  "imported.save": "Save",
+  "imported.cancel": "Cancel",
+  "imported.deleteConfirm": "Delete {symbol} from {file}? This change rewrites the KiCad symbol library.",
   "imported.search": "Search:",
   "imported.searchPlaceholder": "Filter by LCSC Part or symbol name",
   "imported.total": "Total",
@@ -284,6 +295,16 @@ const zhTranslations: Record<string, string> = {
   "imported.noFilterResults": "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u5df2\u5bfc\u5165\u7b26\u53f7\u3002",
   "imported.copyPart": "\u590d\u5236 LCSC Part",
   "imported.copied": "LCSC Part \u5df2\u590d\u5236\u5230\u526a\u8d34\u677f\u3002",
+  "imported.edit": "\u7f16\u8f91",
+  "imported.deleteSymbol": "\u5220\u9664",
+  "imported.editorTitle": "\u7f16\u8f91\u5df2\u5bfc\u5165\u7b26\u53f7",
+  "imported.editorHint": "\u76f4\u63a5\u5728 KiCad \u7b26\u53f7\u5e93\u4e2d\u4fee\u6539 Symbol Name \u6216 LCSC Part\u3002",
+  "imported.editorSourceFile": "\u6765\u6e90\u6587\u4ef6:",
+  "imported.editorSymbolName": "\u7b26\u53f7\u540d:",
+  "imported.editorLcscPart": "LCSC Part:",
+  "imported.save": "\u4fdd\u5b58",
+  "imported.cancel": "\u53d6\u6d88",
+  "imported.deleteConfirm": "\u786e\u5b9a\u8981\u4ece {file} \u5220\u9664 {symbol} \u5417\uff1f\u8fd9\u4f1a\u76f4\u63a5\u91cd\u5199 KiCad \u7b26\u53f7\u5e93\u6587\u4ef6\u3002",
   "imported.search": "\u641c\u7d22:",
   "imported.searchPlaceholder": "\u6309 LCSC Part \u6216\u7b26\u53f7\u540d\u7b5b\u9009",
   "imported.total": "\u603b\u6570",
@@ -389,6 +410,10 @@ const importedUi: {
   notice: ExportNotice | null;
   query: string;
   selectedKeys: Set<string>;
+  editingKey: string | null;
+  editDraftSymbolName: string;
+  editDraftLcscPart: string;
+  editDraftSourceFile: string;
 } = {
   loading: false,
   busy: false,
@@ -399,6 +424,10 @@ const importedUi: {
   notice: null,
   query: "",
   selectedKeys: new Set(),
+  editingKey: null,
+  editDraftSymbolName: "",
+  editDraftLcscPart: "",
+  editDraftSourceFile: "",
 };
 
 const PATTERN_QUICK = "regex:(?m)^(C\\d{3,})$";
@@ -415,6 +444,13 @@ function normalizeNlbn3dPathMode(value: unknown): Nlbn3dPathMode | null {
 
 function t(key: string): string {
   return translations[currentLang][key] ?? translations.en[key] ?? key;
+}
+
+function formatMessage(key: string, values: Record<string, string>): string {
+  return Object.entries(values).reduce(
+    (message, [name, value]) => message.split(`{${name}}`).join(value),
+    t(key),
+  );
 }
 
 function $(id: string): HTMLElement {
@@ -448,8 +484,12 @@ function parseOptionalHexColor(value: string): { normalized: string | null; vali
   return { normalized: `#${match[1].toUpperCase()}`, valid: true };
 }
 
+function normalizeImportedLcscPart(value: string): string {
+  return value.trim().toUpperCase();
+}
+
 function importedRowKey(item: ImportedSymbol): string {
-  return `${item.lcsc_part}\u001f${item.symbol_name}`;
+  return `${item.source_file}\u001f${item.symbol_name}\u001f${item.lcsc_part}`;
 }
 
 function dedupeImportedParts(items: ImportedSymbol[]): string[] {
@@ -479,6 +519,13 @@ function selectedImportedItems(): ImportedSymbol[] {
   return importedUi.items.filter((item) => importedUi.selectedKeys.has(importedRowKey(item)));
 }
 
+function importedItemByKey(key: string | null): ImportedSymbol | null {
+  if (!key) {
+    return null;
+  }
+  return importedUi.items.find((item) => importedRowKey(item) === key) ?? null;
+}
+
 function activeImportedParts(): string[] {
   const selected = dedupeImportedParts(selectedImportedItems());
   if (selected.length > 0) {
@@ -492,6 +539,24 @@ function pruneImportedSelection() {
   importedUi.selectedKeys = new Set(
     Array.from(importedUi.selectedKeys).filter((key) => validKeys.has(key)),
   );
+
+  if (importedUi.editingKey && !validKeys.has(importedUi.editingKey)) {
+    closeImportedEditor();
+  }
+}
+
+function openImportedEditor(item: ImportedSymbol) {
+  importedUi.editingKey = importedRowKey(item);
+  importedUi.editDraftSymbolName = item.symbol_name;
+  importedUi.editDraftLcscPart = item.lcsc_part;
+  importedUi.editDraftSourceFile = item.source_file;
+}
+
+function closeImportedEditor() {
+  importedUi.editingKey = null;
+  importedUi.editDraftSymbolName = "";
+  importedUi.editDraftLcscPart = "";
+  importedUi.editDraftSourceFile = "";
 }
 
 function buildKeyword(): string {
@@ -911,6 +976,8 @@ function renderImportedList(items: ImportedSymbol[]) {
   const copyLabel = t("monitor.copy");
   const copyTitle = t("imported.copyPart");
   const queueLabel = t("imported.queuePart");
+  const editLabel = t("imported.edit");
+  const deleteLabel = t("imported.deleteSymbol");
   const container = $("imported-list");
   container.innerHTML = "";
 
@@ -928,6 +995,8 @@ function renderImportedList(items: ImportedSymbol[]) {
       <span class="imported-actions">
         <button data-queue-imported="${escapeAttr(item.lcsc_part)}" title="${queueLabel}">${queueLabel}</button>
         <button data-copy-imported="${escapeAttr(item.lcsc_part)}" title="${copyTitle}">${copyLabel}</button>
+        <button data-edit-imported="${escapeAttr(key)}" title="${editLabel}">${editLabel}</button>
+        <button data-delete-imported="${escapeAttr(key)}" title="${deleteLabel}">${deleteLabel}</button>
       </span>`;
     container.appendChild(row);
   });
@@ -940,11 +1009,13 @@ function renderImportedPanel() {
   const totalParts = dedupeImportedParts(importedUi.items);
   const filteredParts = dedupeImportedParts(filteredItems);
   const selectedParts = dedupeImportedParts(selectedItems);
+  const editingItem = importedItemByKey(importedUi.editingKey);
   const count = $("imported-count");
   const path = $("imported-scanned-path");
   const feedback = $("imported-feedback");
   const table = $("imported-table");
   const empty = $("imported-empty");
+  const editorCard = $("imported-editor-card");
   const refreshButton = $("btn-refresh-imported") as HTMLButtonElement;
   const browseButton = $("btn-browse-imported-parts-save-path") as HTMLButtonElement;
   const applyButton = $("btn-apply-imported-parts-save-path") as HTMLButtonElement;
@@ -954,6 +1025,13 @@ function renderImportedPanel() {
   const queueButton = $("btn-queue-imported-parts") as HTMLButtonElement;
   const selectVisibleButton = $("btn-select-imported-visible") as HTMLButtonElement;
   const clearSelectionButton = $("btn-clear-imported-selection") as HTMLButtonElement;
+  const saveEditButton = $("btn-save-imported-edit") as HTMLButtonElement;
+  const editSymbolInput = $("imported-edit-symbol-name-input") as HTMLInputElement;
+  const editLcscInput = $("imported-edit-lcsc-part-input") as HTMLInputElement;
+  const cancelEditButtons = [
+    $("btn-cancel-imported-edit") as HTMLButtonElement,
+    $("btn-cancel-imported-edit-secondary") as HTMLButtonElement,
+  ];
   const controlsDisabled = importedUi.loading || importedUi.busy;
 
   count.textContent = String(totalParts.length);
@@ -970,10 +1048,28 @@ function renderImportedPanel() {
   queueButton.disabled = controlsDisabled || activeParts.length === 0;
   selectVisibleButton.disabled = controlsDisabled || filteredItems.length === 0;
   clearSelectionButton.disabled = controlsDisabled || importedUi.selectedKeys.size === 0;
+  saveEditButton.disabled = controlsDisabled || !editingItem;
+  editSymbolInput.disabled = controlsDisabled || !editingItem;
+  editLcscInput.disabled = controlsDisabled || !editingItem;
+  cancelEditButtons.forEach((button) => {
+    button.disabled = controlsDisabled;
+  });
 
   const resolvedPath =
     importedUi.scannedPath || lastState?.nlbn_output_path || t("status.none");
   path.textContent = `${t("imported.scannedPath")} ${resolvedPath}`;
+
+  if (editingItem) {
+    editorCard.classList.remove("hidden");
+    editSymbolInput.value = importedUi.editDraftSymbolName;
+    editLcscInput.value = importedUi.editDraftLcscPart;
+    $("imported-editor-source-file").textContent = importedUi.editDraftSourceFile;
+  } else {
+    editorCard.classList.add("hidden");
+    editSymbolInput.value = "";
+    editLcscInput.value = "";
+    $("imported-editor-source-file").textContent = "";
+  }
 
   if (importedUi.notice) {
     feedback.textContent = importedUi.notice.message;
@@ -1117,6 +1213,7 @@ async function loadImportedSymbols() {
     importedUi.items = [];
     importedUi.error = errorMessage(error);
     importedUi.selectedKeys.clear();
+    closeImportedEditor();
   }
 
   renderImportedPanel();
@@ -1212,6 +1309,53 @@ async function queueActiveImportedParts() {
   const result = await invoke<string>("queue_lcsc_parts", { parts });
   showImportedResult(result);
   await refreshState();
+}
+
+async function saveImportedEdit() {
+  const item = importedItemByKey(importedUi.editingKey);
+  if (!item) {
+    return;
+  }
+
+  const newSymbolName = importedUi.editDraftSymbolName.trim();
+  const newLcscPart = normalizeImportedLcscPart(importedUi.editDraftLcscPart);
+  const result = await invoke<string>("update_imported_symbol", {
+    request: {
+      source_file: item.source_file,
+      symbol_name: item.symbol_name,
+      new_symbol_name: newSymbolName,
+      lcsc_part: newLcscPart,
+    },
+  });
+
+  closeImportedEditor();
+  await loadImportedSymbols();
+  showImportedResult(result, "success");
+}
+
+async function deleteImportedItem(item: ImportedSymbol) {
+  const confirmed = window.confirm(
+    formatMessage("imported.deleteConfirm", {
+      symbol: item.symbol_name,
+      file: item.source_file,
+    }),
+  );
+  if (!confirmed) {
+    return;
+  }
+
+  const result = await invoke<string>("delete_imported_symbol", {
+    request: {
+      source_file: item.source_file,
+      symbol_name: item.symbol_name,
+    },
+  });
+
+  if (importedUi.editingKey === importedRowKey(item)) {
+    closeImportedEditor();
+  }
+  await loadImportedSymbols();
+  showImportedResult(result, "success");
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
@@ -1513,6 +1657,37 @@ window.addEventListener("DOMContentLoaded", async () => {
     renderImportedPanel();
   });
 
+  $("imported-edit-symbol-name-input").addEventListener("input", (event) => {
+    importedUi.editDraftSymbolName = (event.target as HTMLInputElement).value;
+  });
+
+  $("imported-edit-lcsc-part-input").addEventListener("input", (event) => {
+    importedUi.editDraftLcscPart = normalizeImportedLcscPart((event.target as HTMLInputElement).value);
+    (event.target as HTMLInputElement).value = importedUi.editDraftLcscPart;
+  });
+
+  const cancelImportedEdit = () => {
+    if (importedUi.busy) return;
+    closeImportedEditor();
+    renderImportedPanel();
+  };
+
+  $("btn-cancel-imported-edit").addEventListener("click", cancelImportedEdit);
+  $("btn-cancel-imported-edit-secondary").addEventListener("click", cancelImportedEdit);
+
+  $("btn-save-imported-edit").addEventListener("click", async () => {
+    await runImportedAction(async () => {
+      importedUi.notice = null;
+      renderImportedPanel();
+
+      try {
+        await saveImportedEdit();
+      } catch (error) {
+        showImportedResult(errorMessage(error), "error");
+      }
+    });
+  });
+
   $("btn-copy-imported-parts").addEventListener("click", async () => {
     const parts = activeImportedParts();
     if (parts.length === 0) return;
@@ -1739,6 +1914,36 @@ window.addEventListener("DOMContentLoaded", async () => {
           const result = await invoke<string>("queue_lcsc_parts", { parts: [importedQueue] });
           showImportedResult(result);
           await refreshState();
+        } catch (error) {
+          showImportedResult(errorMessage(error), "error");
+        }
+      });
+      return;
+    }
+
+    const importedEdit = target.getAttribute("data-edit-imported");
+    if (importedEdit !== null) {
+      const item = importedItemByKey(importedEdit);
+      if (!item) {
+        return;
+      }
+      openImportedEditor(item);
+      renderImportedPanel();
+      return;
+    }
+
+    const importedDelete = target.getAttribute("data-delete-imported");
+    if (importedDelete !== null) {
+      const item = importedItemByKey(importedDelete);
+      if (!item) {
+        return;
+      }
+      await runImportedAction(async () => {
+        importedUi.notice = null;
+        renderImportedPanel();
+
+        try {
+          await deleteImportedItem(item);
         } catch (error) {
           showImportedResult(errorMessage(error), "error");
         }

@@ -335,6 +335,34 @@
               <div id="imported-feedback" class="msg msg-info hidden"></div>
             </div>
 
+            <div id="imported-editor-card" class="card imported-editor-card hidden">
+              <div class="card-title-row imported-editor-head">
+                <div>
+                  <div class="card-title" data-i18n="imported.editorTitle">Edit Imported Symbol</div>
+                  <div class="card-subtitle hint" data-i18n="imported.editorHint">Update the symbol name or LCSC Part directly in the KiCad symbol library.</div>
+                </div>
+                <button class="btn-ghost btn-sm" id="btn-cancel-imported-edit" data-i18n="imported.cancel">Cancel</button>
+              </div>
+              <div class="imported-editor-grid">
+                <div class="imported-control">
+                  <label class="hint" data-i18n="imported.editorSourceFile">Source file:</label>
+                  <div id="imported-editor-source-file" class="imported-editor-readonly"></div>
+                </div>
+                <div class="imported-control">
+                  <label class="hint" data-i18n="imported.editorSymbolName">Symbol Name:</label>
+                  <input type="text" id="imported-edit-symbol-name-input" />
+                </div>
+                <div class="imported-control">
+                  <label class="hint" data-i18n="imported.editorLcscPart">LCSC Part:</label>
+                  <input type="text" id="imported-edit-lcsc-part-input" />
+                </div>
+              </div>
+              <div class="row imported-editor-actions">
+                <button class="btn-primary btn-sm" id="btn-save-imported-edit" data-i18n="imported.save">Save</button>
+                <button class="btn-outline btn-sm" id="btn-cancel-imported-edit-secondary" data-i18n="imported.cancel">Cancel</button>
+              </div>
+            </div>
+
             <div class="card card-full imported-browser-card">
               <div id="imported-table" class="imported-table hidden">
                 <div class="imported-head">

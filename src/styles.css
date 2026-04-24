@@ -655,6 +655,25 @@ button {
   gap: 12px;
 }
 
+.imported-editor-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.imported-editor-head {
+  align-items: flex-start;
+  margin-bottom: 0;
+}
+
+.imported-editor-head .card-title {
+  margin-bottom: 4px;
+}
+
+.imported-editor-head .card-subtitle {
+  margin: 0;
+}
+
 .imported-summary-top {
   margin-bottom: 0;
 }
@@ -696,6 +715,28 @@ button {
 
 .imported-file-control .setting-row {
   margin-top: 0;
+}
+
+.imported-editor-grid {
+  display: grid;
+  grid-template-columns: minmax(220px, 0.8fr) minmax(220px, 1fr) minmax(220px, 0.9fr);
+  gap: 14px;
+}
+
+.imported-editor-readonly {
+  min-height: 40px;
+  display: flex;
+  align-items: center;
+  padding: 7px 12px;
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-hover);
+  color: var(--text-2);
+  word-break: break-all;
+}
+
+.imported-editor-actions {
+  justify-content: flex-end;
 }
 
 .imported-meta-hint {
@@ -811,6 +852,11 @@ button {
 .imported-actions button:hover {
   background: var(--primary-light);
   color: var(--primary);
+}
+
+.imported-actions button[data-delete-imported]:hover {
+  background: var(--danger-light);
+  color: var(--danger);
 }
 
 /* ================================================================== */
@@ -1171,7 +1217,8 @@ html.lang-zh {
 
 @media (max-width: 1180px) {
   .export-grid,
-  .imported-control-grid {
+  .imported-control-grid,
+  .imported-editor-grid {
     grid-template-columns: 1fr;
   }
 }

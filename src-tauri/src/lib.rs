@@ -436,6 +436,40 @@ fn get_imported_symbols(
     imported_symbols::load_imported_symbols(std::path::Path::new(&output_path))
 }
 
+#[tauri::command]
+fn update_imported_symbol(
+    app: State<ManagedApp>,
+    request: imported_symbols::ImportedSymbolUpdateRequest,
+) -> Result<String, String> {
+    let output_path = {
+        let state = app
+            .controller
+            .state()
+            .lock()
+            .map_err(|_| "State lock failed".to_string())?;
+        state.nlbn_output_path.clone()
+    };
+
+    imported_symbols::update_imported_symbol(std::path::Path::new(&output_path), request)
+}
+
+#[tauri::command]
+fn delete_imported_symbol(
+    app: State<ManagedApp>,
+    request: imported_symbols::ImportedSymbolDeleteRequest,
+) -> Result<String, String> {
+    let output_path = {
+        let state = app
+            .controller
+            .state()
+            .lock()
+            .map_err(|_| "State lock failed".to_string())?;
+        state.nlbn_output_path.clone()
+    };
+
+    imported_symbols::delete_imported_symbol(std::path::Path::new(&output_path), request)
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -500,6 +534,8 @@ pub fn run() {
             get_unique_ids,
             copy_to_clipboard,
             get_imported_symbols,
+            update_imported_symbol,
+            delete_imported_symbol,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
