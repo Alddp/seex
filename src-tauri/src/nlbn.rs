@@ -1,17 +1,16 @@
+use nlbn::checkpoint::{append_checkpoint, load_checkpoint};
+use nlbn::{Cli, EasyedaApi, LibraryManager};
 use serde::Serialize;
-use std::fs;
-use std::io::Write;
-use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::path::PathBuf;
+use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
-use std::thread;
-use std::time::Duration;
 use tauri::{AppHandle, Emitter};
-
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
+use tokio::sync::Semaphore;
+use tokio::task::JoinSet;
 
 use crate::monitor::MonitorState;
+
+const DEFAULT_OUTPUT_DIR: &str = "~/lib";
 
 #[derive(Clone, Serialize)]
 struct ExportFinishedPayload {
@@ -29,11 +28,21 @@ struct ExportProgressPayload {
     total: Option<usize>,
 }
 
+struct ItemOutcome {
+    id: String,
+    result: Result<(), String>,
+}
+
 pub struct ExportRequest {
     pub ids: Vec<String>,
     pub output_path: String,
-    pub show_terminal: bool,
+    pub mode: String,
+    pub append: bool,
+    pub library_name: String,
     pub parallel: usize,
+    pub continue_on_error: bool,
+    pub overwrite: bool,
+    pub project_relative: bool,
 }
 
 pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_handle: AppHandle) {
@@ -50,126 +59,28 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
         Some(req.ids.len()),
     );
 
-    thread::spawn(move || {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .unwrap_or_else(|| PathBuf::from("."));
+    tauri::async_runtime::spawn(async move {
+        let result = run_export(&req, &app_handle).await;
+        let (success, message) = match result {
+            Ok(message) => (true, message),
+            Err(error) => (false, error),
+        };
 
-        let temp_file = exe_dir.join("nlbn_ids.txt");
-
-        let write_result = (|| -> std::io::Result<()> {
-            let mut file = fs::File::create(&temp_file)?;
-            for id in &req.ids {
-                writeln!(file, "{}", id)?;
-            }
-            file.sync_all()?;
-            Ok(())
-        })();
-
-        match write_result {
-            Ok(_) => {
-                let temp_str = temp_file.display().to_string();
-                let work_dir = temp_file.parent().unwrap_or(Path::new(".")).to_path_buf();
-
-                emit_progress(
-                    &app_handle,
-                    if req.show_terminal {
-                        "Launching nlbn terminal..."
-                    } else {
-                        "Running nlbn export..."
-                    },
-                    false,
-                    None,
-                    Some(req.ids.len()),
-                );
-
-                let result = if req.show_terminal {
-                    run_in_terminal(&temp_str, &req.output_path, req.parallel, &work_dir)
-                } else {
-                    run_in_background(&temp_str, &req.output_path, req.parallel, &work_dir)
-                };
-
-                let mut notify_payload = None;
-                if let Ok(mut s) = state.lock() {
-                    s.nlbn_running = false;
-                    match result {
-                        Ok(msg) => {
-                            let full = format!(
-                                "{} ({} items -> {})\n{}",
-                                if req.show_terminal {
-                                    "Terminal launched"
-                                } else {
-                                    "nlbn completed"
-                                },
-                                req.ids.len(),
-                                req.output_path,
-                                msg,
-                            );
-                            s.nlbn_last_result = Some(full.clone());
-                            s.add_debug_log(full.clone());
-                            if !req.show_terminal {
-                                notify_payload = Some(ExportFinishedPayload {
-                                    tool: "nlbn",
-                                    success: true,
-                                    message: full,
-                                });
-                            }
-                        }
-                        Err(msg) => {
-                            s.nlbn_last_result = Some(msg.clone());
-                            s.add_debug_log(msg.clone());
-                            notify_payload = Some(ExportFinishedPayload {
-                                tool: "nlbn",
-                                success: false,
-                                message: msg,
-                            });
-                        }
-                    }
-                }
-
-                let _ = app_handle.emit("clipboard-changed", ());
-                if let Some(payload) = notify_payload {
-                    let _ = app_handle.emit("export-finished", payload);
-                }
-
-                if req.show_terminal {
-                    thread::sleep(Duration::from_secs(30));
-                } else {
-                    thread::sleep(Duration::from_secs(2));
-                }
-                let _ = fs::remove_file(&temp_file);
-                let _ = fs::remove_file(work_dir.join("nlbn_export.bat"));
-            }
-            Err(e) => {
-                emit_progress(
-                    &app_handle,
-                    "nlbn export failed before start",
-                    false,
-                    None,
-                    Some(req.ids.len()),
-                );
-                let msg = format!(
-                    "Failed to create temp file: {}\nPath: {}",
-                    e,
-                    temp_file.display()
-                );
-                if let Ok(mut s) = state.lock() {
-                    s.nlbn_running = false;
-                    s.nlbn_last_result = Some(msg.clone());
-                    s.add_debug_log(msg.clone());
-                }
-                let _ = app_handle.emit("clipboard-changed", ());
-                let _ = app_handle.emit(
-                    "export-finished",
-                    ExportFinishedPayload {
-                        tool: "nlbn",
-                        success: false,
-                        message: msg,
-                    },
-                );
-            }
+        if let Ok(mut s) = state.lock() {
+            s.nlbn_running = false;
+            s.nlbn_last_result = Some(message.clone());
+            s.add_debug_log(message.clone());
         }
+
+        let _ = app_handle.emit("clipboard-changed", ());
+        let _ = app_handle.emit(
+            "export-finished",
+            ExportFinishedPayload {
+                tool: "nlbn",
+                success,
+                message,
+            },
+        );
     });
 }
 
@@ -192,111 +103,364 @@ fn emit_progress(
     );
 }
 
-fn run_in_terminal(
-    temp_path: &str,
-    output_path: &str,
-    parallel: usize,
-    work_dir: &Path,
-) -> Result<String, String> {
-    #[cfg(target_os = "windows")]
-    {
-        let bat_file = work_dir.join("nlbn_export.bat");
-        let bat_content = format!(
-            "@echo on\r\ncd /D \"{}\"\r\nnlbn --full --batch \"{}\" -o \"{}\" --parallel {}\r\necho.\r\necho === Done ===\r\npause\r\n",
-            work_dir.display(),
-            temp_path,
-            output_path,
-            parallel,
-        );
-        fs::write(&bat_file, &bat_content)
-            .map_err(|e| format!("Failed to write batch file: {}", e))?;
+async fn run_export(req: &ExportRequest, app_handle: &AppHandle) -> Result<String, String> {
+    let args = Arc::new(build_cli(req));
+    let lib_manager = Arc::new(LibraryManager::from_cli(&args).map_err(|e| e.to_string())?);
+    lib_manager
+        .create_directories()
+        .map_err(|e| e.to_string())?;
 
-        Command::new("cmd")
-            .raw_arg(format!(
-                "/C start \"nlbn export\" \"{}\"",
-                bat_file.display()
-            ))
-            .spawn()
-            .map(|_| format!("Temp: {}\nBatch: {}", temp_path, bat_file.display()))
-            .map_err(|e| format!("Execution failed: {}", e))
+    let checkpoint_path = args.output.join(".checkpoint");
+    let completed_ids = load_checkpoint(&checkpoint_path);
+    let total_requested = req.ids.len();
+    let pending_ids: Vec<String> = req
+        .ids
+        .iter()
+        .filter(|id| !completed_ids.contains(id.as_str()))
+        .cloned()
+        .collect();
+    let skipped_by_checkpoint = total_requested.saturating_sub(pending_ids.len());
+
+    if pending_ids.is_empty() {
+        return Ok(format_summary(
+            req,
+            total_requested,
+            skipped_by_checkpoint,
+            0,
+            0,
+            &[],
+        ));
     }
 
-    #[cfg(not(target_os = "windows"))]
-    {
-        let script = format!(
-            "cd \"{}\" && nlbn --full --batch \"{}\" -o \"{}\" --parallel {}; echo Press Enter to exit; read",
-            work_dir.display(),
-            temp_path,
-            output_path,
-            parallel,
-        );
-        Command::new("gnome-terminal")
-            .args(["--", "bash", "-c", &script])
-            .spawn()
-            .map(|_| format!("Temp: {}", temp_path))
-            .map_err(|e| {
-                format!(
-                    "Execution failed: {}\nMake sure nlbn is installed and in PATH",
-                    e
-                )
-            })
+    let total = pending_ids.len();
+    emit_progress(
+        app_handle,
+        running_message(req, total),
+        false,
+        None,
+        Some(total),
+    );
+
+    let api = Arc::new(EasyedaApi::new());
+    let success_count = Arc::new(AtomicUsize::new(0));
+    let failed_count = Arc::new(AtomicUsize::new(0));
+    let processed_count = Arc::new(AtomicUsize::new(0));
+    let failed_ids = Arc::new(Mutex::new(Vec::new()));
+
+    if total > 1 && req.parallel.max(1) > 1 {
+        let semaphore = Arc::new(Semaphore::new(req.parallel.max(1)));
+        let mut join_set = JoinSet::new();
+
+        for id in pending_ids {
+            let semaphore = semaphore.clone();
+            let args = args.clone();
+            let api = api.clone();
+            let lib_manager = lib_manager.clone();
+
+            join_set.spawn(async move {
+                let _permit = semaphore.acquire_owned().await.map_err(|e| e.to_string())?;
+                let result = process_component(&args, &api, &lib_manager, &id)
+                    .await
+                    .map_err(|e| e.to_string());
+                Ok::<ItemOutcome, String>(ItemOutcome { id, result })
+            });
+        }
+
+        while let Some(joined) = join_set.join_next().await {
+            let outcome = match joined {
+                Ok(Ok(outcome)) => outcome,
+                Ok(Err(error)) => ItemOutcome {
+                    id: "<task>".to_string(),
+                    result: Err(error),
+                },
+                Err(error) => ItemOutcome {
+                    id: "<task>".to_string(),
+                    result: Err(error.to_string()),
+                },
+            };
+
+            register_outcome(
+                app_handle,
+                &outcome,
+                total,
+                &processed_count,
+                &success_count,
+                &failed_count,
+                &failed_ids,
+            );
+        }
+    } else {
+        for id in pending_ids {
+            let outcome = ItemOutcome {
+                id: id.clone(),
+                result: process_component(&args, &api, &lib_manager, &id)
+                    .await
+                    .map_err(|e| e.to_string()),
+            };
+
+            register_outcome(
+                app_handle,
+                &outcome,
+                total,
+                &processed_count,
+                &success_count,
+                &failed_count,
+                &failed_ids,
+            );
+
+            if outcome.result.is_err() && !req.continue_on_error {
+                return Err(format_stopped_error(
+                    req,
+                    &outcome.id,
+                    outcome
+                        .result
+                        .as_ref()
+                        .err()
+                        .map(|message| message.as_str())
+                        .unwrap_or("unknown error"),
+                    total_requested,
+                    skipped_by_checkpoint,
+                    success_count.load(Ordering::Relaxed),
+                    failed_count.load(Ordering::Relaxed),
+                    &failed_ids.lock().map(|ids| ids.clone()).unwrap_or_default(),
+                ));
+            }
+        }
+    }
+
+    let failed_ids = failed_ids.lock().map(|ids| ids.clone()).unwrap_or_default();
+    Ok(format_summary(
+        req,
+        total_requested,
+        skipped_by_checkpoint,
+        success_count.load(Ordering::Relaxed),
+        failed_count.load(Ordering::Relaxed),
+        &failed_ids,
+    ))
+}
+
+fn register_outcome(
+    app_handle: &AppHandle,
+    outcome: &ItemOutcome,
+    total: usize,
+    processed_count: &Arc<AtomicUsize>,
+    success_count: &Arc<AtomicUsize>,
+    failed_count: &Arc<AtomicUsize>,
+    failed_ids: &Arc<Mutex<Vec<String>>>,
+) {
+    match &outcome.result {
+        Ok(()) => {
+            success_count.fetch_add(1, Ordering::Relaxed);
+        }
+        Err(_) => {
+            failed_count.fetch_add(1, Ordering::Relaxed);
+            if let Ok(mut ids) = failed_ids.lock() {
+                ids.push(outcome.id.clone());
+            }
+        }
+    }
+
+    let current = processed_count.fetch_add(1, Ordering::Relaxed) + 1;
+    let message = match &outcome.result {
+        Ok(()) => format!("Processed {} successfully", outcome.id),
+        Err(error) => format!("Failed {}: {}", outcome.id, error),
+    };
+    emit_progress(app_handle, message, true, Some(current), Some(total));
+}
+
+async fn process_component(
+    args: &Cli,
+    api: &EasyedaApi,
+    lib_manager: &LibraryManager,
+    lcsc_id: &str,
+) -> nlbn::Result<()> {
+    let component_data = api.get_component_data(lcsc_id).await?;
+
+    if args.symbol || args.full {
+        nlbn::symbol_converter::convert_symbol(args, &component_data, lib_manager, lcsc_id)?;
+    }
+
+    if args.footprint || args.full {
+        nlbn::footprint_converter::convert_footprint(args, &component_data, lib_manager, lcsc_id)?;
+    }
+
+    if args.model_3d || args.full {
+        nlbn::model_converter::convert_3d_model(args, api, &component_data, lib_manager, lcsc_id)
+            .await?;
+    }
+
+    append_checkpoint(&args.output.join(".checkpoint"), lcsc_id);
+    Ok(())
+}
+
+fn build_cli(req: &ExportRequest) -> Cli {
+    let mode = normalize_mode(&req.mode);
+    let output = PathBuf::from(normalize_output_path(&req.output_path));
+
+    Cli {
+        lcsc_id: None,
+        batch: None,
+        symbol: mode == "symbol",
+        footprint: mode == "footprint",
+        model_3d: mode == "3d",
+        full: mode == "full",
+        output,
+        lib_name: effective_library_name(req),
+        symbol_lib: None,
+        footprint_lib: None,
+        model_lib: None,
+        prompt: false,
+        overwrite: req.overwrite,
+        project_relative: req.project_relative,
+        debug: false,
+        continue_on_error: req.continue_on_error,
+        parallel: req.parallel.max(1),
     }
 }
 
-fn run_in_background(
-    temp_path: &str,
-    output_path: &str,
-    parallel: usize,
-    work_dir: &Path,
-) -> Result<String, String> {
-    let parallel_str = parallel.to_string();
-
-    #[cfg(target_os = "windows")]
-    let result = Command::new("cmd")
-        .args([
-            "/C",
-            "nlbn",
-            "--full",
-            "--batch",
-            temp_path,
-            "-o",
-            output_path,
-            "--parallel",
-            &parallel_str,
-        ])
-        .current_dir(work_dir)
-        .output();
-
-    #[cfg(not(target_os = "windows"))]
-    let result = Command::new("nlbn")
-        .args([
-            "--full",
-            "--batch",
-            temp_path,
-            "-o",
-            output_path,
-            "--parallel",
-            &parallel_str,
-        ])
-        .current_dir(work_dir)
-        .output();
-
-    match result {
-        Ok(output) => {
-            let stdout = String::from_utf8_lossy(&output.stdout).to_string();
-            let stderr = String::from_utf8_lossy(&output.stderr).to_string();
-            if output.status.success() {
-                Ok(format!("Output: {}", stdout))
-            } else {
-                Err(format!(
-                    "nlbn failed\nstdout: {}\nstderr: {}",
-                    stdout, stderr
-                ))
-            }
-        }
-        Err(e) => Err(format!(
-            "Execution failed: {}\nMake sure nlbn is installed and in PATH",
-            e
-        )),
+fn normalize_mode(mode: &str) -> &str {
+    match mode.trim().to_ascii_lowercase().as_str() {
+        "symbol" => "symbol",
+        "footprint" => "footprint",
+        "3d" => "3d",
+        _ => "full",
     }
+}
+
+fn normalize_output_path(path: &str) -> String {
+    let trimmed = path.trim();
+    if trimmed.is_empty() {
+        DEFAULT_OUTPUT_DIR.to_string()
+    } else {
+        trimmed.to_string()
+    }
+}
+
+fn effective_library_name(req: &ExportRequest) -> Option<String> {
+    if !req.append {
+        None
+    } else {
+        let trimmed = req.library_name.trim();
+        if trimmed.is_empty() {
+            None
+        } else {
+            Some(trimmed.to_string())
+        }
+    }
+}
+
+fn running_message(req: &ExportRequest, total: usize) -> String {
+    format!(
+        "Running nlbn {} batch for {} items...",
+        mode_label(&req.mode).to_ascii_lowercase(),
+        total
+    )
+}
+
+fn format_summary(
+    req: &ExportRequest,
+    total_requested: usize,
+    skipped_by_checkpoint: usize,
+    success_count: usize,
+    failed_count: usize,
+    failed_ids: &[String],
+) -> String {
+    let mut lines = vec![format!(
+        "nlbn batch complete. Total: {} | Checkpoint skipped: {} | Success: {} | Failed: {}",
+        total_requested, skipped_by_checkpoint, success_count, failed_count
+    )];
+
+    lines.push(format!(
+        "Targets: {} | Parallel: {}",
+        mode_label(&req.mode),
+        req.parallel.max(1),
+    ));
+
+    lines.push(format!(
+        "Append: {} | Continue on error: {} | Overwrite: {} | Project relative: {}",
+        yes_no(req.append),
+        yes_no(req.continue_on_error),
+        yes_no(req.overwrite),
+        yes_no(req.project_relative),
+    ));
+
+    lines.push(format!("Library name: {}", resolved_library_name(req)));
+    lines.push(format!(
+        "Output directory: {}",
+        normalize_output_path(&req.output_path)
+    ));
+
+    if !failed_ids.is_empty() {
+        lines.push(format!("Failed IDs: {}", failed_ids.join(", ")));
+    }
+
+    lines.join("\n")
+}
+
+fn format_stopped_error(
+    req: &ExportRequest,
+    failed_id: &str,
+    error: &str,
+    total_requested: usize,
+    skipped_by_checkpoint: usize,
+    success_count: usize,
+    failed_count: usize,
+    failed_ids: &[String],
+) -> String {
+    let mut lines = vec![
+        "nlbn export failed".to_string(),
+        format!("Stopped on {}: {}", failed_id, error),
+        format!(
+            "Total: {} | Checkpoint skipped: {} | Success: {} | Failed: {}",
+            total_requested, skipped_by_checkpoint, success_count, failed_count
+        ),
+        format!(
+            "Targets: {} | Parallel: {}",
+            mode_label(&req.mode),
+            req.parallel.max(1),
+        ),
+        format!(
+            "Append: {} | Continue on error: {} | Overwrite: {} | Project relative: {}",
+            yes_no(req.append),
+            yes_no(req.continue_on_error),
+            yes_no(req.overwrite),
+            yes_no(req.project_relative),
+        ),
+        format!("Library name: {}", resolved_library_name(req)),
+        format!(
+            "Output directory: {}",
+            normalize_output_path(&req.output_path)
+        ),
+    ];
+
+    if !failed_ids.is_empty() {
+        lines.push(format!("Failed IDs: {}", failed_ids.join(", ")));
+    }
+
+    lines.join("\n")
+}
+
+fn mode_label(mode: &str) -> &'static str {
+    match normalize_mode(mode) {
+        "symbol" => "Symbol",
+        "footprint" => "Footprint",
+        "3d" => "3D",
+        _ => "Full",
+    }
+}
+
+fn resolved_library_name(req: &ExportRequest) -> String {
+    effective_library_name(req).unwrap_or_else(|| {
+        let output = PathBuf::from(normalize_output_path(&req.output_path));
+        output
+            .file_name()
+            .and_then(|name| name.to_str())
+            .filter(|name| !name.is_empty())
+            .unwrap_or("nlbn")
+            .to_string()
+    })
+}
+
+fn yes_no(value: bool) -> &'static str {
+    if value { "ON" } else { "OFF" }
 }

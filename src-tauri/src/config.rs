@@ -36,15 +36,27 @@ pub struct MonitorConfig {
 pub struct NlbnConfig {
     pub output_path: String,
     pub show_terminal: bool,
+    pub mode: String,
+    pub append: bool,
+    pub library_name: String,
     pub parallel: usize,
+    pub continue_on_error: bool,
+    pub overwrite: bool,
+    pub project_relative: bool,
 }
 
 impl Default for NlbnConfig {
     fn default() -> Self {
         Self {
             output_path: "~/lib".to_string(),
-            show_terminal: true,
+            show_terminal: false,
+            mode: "full".to_string(),
+            append: false,
+            library_name: String::new(),
             parallel: 4,
+            continue_on_error: false,
+            overwrite: false,
+            project_relative: false,
         }
     }
 }
@@ -146,7 +158,13 @@ impl NlbnConfig {
         Self {
             output_path,
             show_terminal,
+            mode: defaults.mode,
+            append: defaults.append,
+            library_name: defaults.library_name,
             parallel,
+            continue_on_error: defaults.continue_on_error,
+            overwrite: defaults.overwrite,
+            project_relative: defaults.project_relative,
         }
     }
 }

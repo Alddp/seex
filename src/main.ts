@@ -10,7 +10,13 @@ interface AppState {
   nlbn_output_path: string;
   nlbn_last_result: string | null;
   nlbn_show_terminal: boolean;
+  nlbn_mode: NlbnMode;
+  nlbn_append: boolean;
+  nlbn_library_name: string;
   nlbn_parallel: number;
+  nlbn_continue_on_error: boolean;
+  nlbn_overwrite: boolean;
+  nlbn_project_relative: boolean;
   nlbn_running: boolean;
   npnp_output_path: string;
   npnp_last_result: string | null;
@@ -59,6 +65,7 @@ interface ExportProgressState {
 }
 
 type Lang = "en" | "zh";
+type NlbnMode = "full" | "symbol" | "footprint" | "3d";
 type NpnpMode = "full" | "schlib" | "pcblib";
 
 interface ExportCardOptions {
@@ -74,6 +81,7 @@ interface ExportCardOptions {
   result: string | null;
 }
 
+const nlbnModes: NlbnMode[] = ["full", "symbol", "footprint", "3d"];
 const npnpModes: NpnpMode[] = ["full", "schlib", "pcblib"];
 
 const enTranslations: Record<string, string> = {
@@ -117,6 +125,8 @@ const enTranslations: Record<string, string> = {
   "export.npnpExport": "npnp Export",
   "export.nlbnConfig": "nlbn Configuration",
   "export.npnpConfig": "npnp Configuration",
+  "export.nlbnMode": "Export mode:",
+  "export.nlbnOptions": "Batch options:",
   "export.itemsReady": "items ready",
   "export.exportNlbn": "Export nlbn",
   "export.exportNpnp": "Export npnp",
@@ -126,15 +136,19 @@ const enTranslations: Record<string, string> = {
   "export.exportDir": "Export directory:",
   "export.browse": "Browse",
   "export.apply": "Apply",
-  "export.toggleTerminal": "Toggle Terminal",
-  "export.terminalOn": "Terminal: ON",
-  "export.terminalOff": "Terminal: OFF",
+  "export.toggleTerminal": "Background Only",
+  "export.terminalOn": "Terminal launch disabled",
+  "export.terminalOff": "Terminal launch disabled",
   "export.example": "Example: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "nlbn is not installed",
   "export.nlbnInstallHint": "Install nlbn and add it to your system PATH to use this feature.",
   "export.npnpMode": "Export mode:",
   "export.npnpOptions": "Batch options:",
   "export.full": "Full",
+  "export.append": "Append",
+  "export.symbol": "Symbol",
+  "export.footprint": "Footprint",
+  "export.model3d": "3D",
   "export.schlib": "SchLib",
   "export.pcblib": "PcbLib",
   "export.merge": "Merge",
@@ -143,12 +157,17 @@ const enTranslations: Record<string, string> = {
   "export.nlbnFor": "nlbn Export for KiCad",
   "export.npnpFor": "npnp Export for Altium Designer",
   "export.libraryName": "Library name:",
+  "export.nlbnAppendHint": "Append targets an existing KiCad library set under the export directory and uses the library name below.",
+  "export.nlbnLibraryNameHint": "Optional base name for the generated KiCad library set under the export directory.",
   "export.libraryNameHint": "Used as the merged SchLib/PcbLib file name when Merge is enabled.",
   "export.parallel": "Parallel jobs:",
   "export.nlbnParallelHint": "nlbn requires --parallel to be at least 1.",
   "export.npnpParallelHint": "Controls npnp batch concurrency and must be at least 1.",
   "export.continueOnError": "Continue On Error",
   "export.force": "Force",
+  "export.overwrite": "Overwrite",
+  "export.projectRelative": "Project Relative",
+  "export.projectRelativeHint": "Project Relative switches 3D model paths in generated footprints to KIPRJMOD-style references.",
   "language.desc": "Switch interface language",
   "language.select": "Select Language",
   "about.tagline": "Clipboard Event Tracker",
@@ -199,6 +218,8 @@ const zhTranslations: Record<string, string> = {
   "export.npnpExport": "npnp \u5bfc\u51fa",
   "export.nlbnConfig": "nlbn \u914d\u7f6e",
   "export.npnpConfig": "npnp \u914d\u7f6e",
+  "export.nlbnMode": "\u5bfc\u51fa\u6a21\u5f0f:",
+  "export.nlbnOptions": "\u6279\u5904\u7406\u9009\u9879:",
   "export.itemsReady": "\u9879\u5f85\u5bfc\u51fa",
   "export.exportNlbn": "\u5bfc\u51fa nlbn",
   "export.exportNpnp": "\u5bfc\u51fa npnp",
@@ -208,27 +229,36 @@ const zhTranslations: Record<string, string> = {
   "export.exportDir": "\u5bfc\u51fa\u76ee\u5f55:",
   "export.browse": "\u6d4f\u89c8",
   "export.apply": "\u5e94\u7528",
-  "export.toggleTerminal": "\u5207\u6362\u7ec8\u7aef",
-  "export.terminalOn": "\u7ec8\u7aef: \u5f00",
-  "export.terminalOff": "\u7ec8\u7aef: \u5173",
+  "export.toggleTerminal": "\u4ec5\u540e\u53f0\u8fd0\u884c",
+  "export.terminalOn": "\u5df2\u7981\u7528\u7ec8\u7aef\u542f\u52a8",
+  "export.terminalOff": "\u5df2\u7981\u7528\u7ec8\u7aef\u542f\u52a8",
   "export.example": "\u793a\u4f8b: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "\u672a\u5b89\u88c5 nlbn",
   "export.nlbnInstallHint": "\u8bf7\u5148\u5b89\u88c5 nlbn\uff0c\u5e76\u5c06\u5176\u52a0\u5165\u7cfb\u7edf PATH \u540e\u518d\u4f7f\u7528\u6b64\u529f\u80fd\u3002",
   "export.npnpMode": "\u5bfc\u51fa\u6a21\u5f0f:",
   "export.npnpOptions": "\u6279\u5904\u7406\u9009\u9879:",
   "export.full": "\u5b8c\u6574",
+  "export.append": "\u8ffd\u52a0",
+  "export.symbol": "\u7b26\u53f7",
+  "export.footprint": "\u5c01\u88c5",
+  "export.model3d": "3D",
   "export.merge": "\u5408\u5e76",
   "export.mergeAppend": "\u5408\u5e76\u8ffd\u52a0",
   "export.mergeAppendHint": "\u5408\u5e76\u8ffd\u52a0\u4f1a\u5728\u73b0\u6709\u7684\u5408\u5e76\u5e93\u57fa\u7840\u4e0a\u8ffd\u52a0\u5143\u4ef6\u5e76\u8df3\u8fc7\u91cd\u590d ID\uff08\u9700\u8981\u540c\u65f6\u542f\u7528\u5408\u5e76\uff09\u3002",
   "export.nlbnFor": "nlbn KiCad \u5bfc\u51fa",
   "export.npnpFor": "npnp Altium Designer \u5bfc\u51fa",
   "export.libraryName": "\u5e93\u540d\u79f0:",
+  "export.nlbnAppendHint": "\u8ffd\u52a0\u4f1a\u5b9a\u5411\u5bfc\u51fa\u76ee\u5f55\u4e0b\u5df2\u5b58\u5728\u7684 KiCad \u5e93\u96c6\uff0c\u5e76\u4f7f\u7528\u4e0b\u65b9\u7684\u5e93\u540d\u79f0\u3002",
+  "export.nlbnLibraryNameHint": "\u53ef\u9009\uff0c\u7528\u4e8e\u8bbe\u5b9a\u5bfc\u51fa\u76ee\u5f55\u4e0b KiCad \u5e93\u96c6\u7684\u57fa\u7840\u540d\u79f0\u3002",
   "export.libraryNameHint": "\u542f\u7528\u5408\u5e76\u65f6\u4f5c\u4e3a\u5408\u5e76 SchLib/PcbLib \u6587\u4ef6\u540d\u3002",
   "export.parallel": "\u5e76\u884c\u4efb\u52a1\u6570:",
   "export.nlbnParallelHint": "nlbn \u8981\u6c42 --parallel \u81f3\u5c11\u4e3a 1\u3002",
   "export.npnpParallelHint": "\u63a7\u5236 npnp \u6279\u91cf\u5bfc\u51fa\u5e76\u53d1\u6570\uff0c\u4e14\u81f3\u5c11\u4e3a 1\u3002",
   "export.continueOnError": "\u51fa\u9519\u7ee7\u7eed",
   "export.force": "\u5f3a\u5236",
+  "export.overwrite": "\u8986\u76d6",
+  "export.projectRelative": "\u9879\u76ee\u76f8\u5bf9\u8def\u5f84",
+  "export.projectRelativeHint": "\u9879\u76ee\u76f8\u5bf9\u8def\u5f84\u4f1a\u5c06\u751f\u6210\u5c01\u88c5\u4e2d\u7684 3D \u6a21\u578b\u5f15\u7528\u5207\u6362\u4e3a KIPRJMOD \u98ce\u683c\u8def\u5f84\u3002",
   "language.desc": "\u5207\u6362\u754c\u9762\u8bed\u8a00",
   "language.select": "\u9009\u62e9\u8bed\u8a00",
   "about.tagline": "\u526a\u8d34\u677f\u4e8b\u4ef6\u8ffd\u8e2a\u5668",
@@ -443,8 +473,7 @@ function renderExportNotice(tool: ExportTool) {
 
 function renderExportResult(tool: ExportTool, result: string | null, busy: boolean) {
   const resultBox = $(toolElementId(tool, "result"));
-  const promptVisible = tool === "nlbn" && !$("nlbn-not-found").classList.contains("hidden");
-  if (!result || busy || exportUi[tool].notice !== null || promptVisible) {
+  if (!result || busy || exportUi[tool].notice !== null) {
     resultBox.textContent = "";
     resultBox.className = "msg msg-info hidden";
     return;
@@ -476,14 +505,13 @@ function renderState(state: AppState) {
   $("monitor-status").textContent = `${kwLabel} ${state.keyword ? "LCSC" : noneLabel} | H: ${state.history_count} | M: ${state.matched_count}`;
 
   syncInputValue("nlbn-path-input", state.nlbn_output_path);
+  syncInputValue("nlbn-library-name-input", state.nlbn_library_name);
   syncInputValue("nlbn-parallel-input", String(state.nlbn_parallel));
   syncInputValue("npnp-path-input", state.npnp_output_path);
   syncInputValue("npnp-library-name-input", state.npnp_library_name);
   syncInputValue("npnp-parallel-input", String(state.npnp_parallel));
   syncInputValue("history-save-path-input", state.history_save_path);
   syncInputValue("matched-save-path-input", state.matched_save_path);
-
-  $("nlbn-terminal-status").textContent = state.nlbn_show_terminal ? t("export.terminalOn") : t("export.terminalOff");
 
   const monBtn = $("btn-toggle-monitor");
   monBtn.classList.toggle("active", state.monitoring);
@@ -514,6 +542,20 @@ function renderState(state: AppState) {
     resultId: "npnp-result",
     result: state.npnp_last_result,
   });
+
+  nlbnModes.forEach((mode) => {
+    $("btn-nlbn-mode-" + mode).classList.toggle("active", state.nlbn_mode === mode);
+  });
+
+  $("btn-toggle-nlbn-append").classList.toggle("active", state.nlbn_append);
+  $("btn-toggle-nlbn-continue-on-error").classList.toggle("active", state.nlbn_continue_on_error);
+  $("btn-toggle-nlbn-overwrite").classList.toggle("active", state.nlbn_overwrite);
+  $("btn-toggle-nlbn-project-relative").classList.toggle("active", state.nlbn_project_relative);
+
+  const nlbnLibraryInput = $("nlbn-library-name-input") as HTMLInputElement;
+  const nlbnLibraryApply = $("btn-apply-nlbn-library-name") as HTMLButtonElement;
+  nlbnLibraryInput.disabled = !state.nlbn_append;
+  nlbnLibraryApply.disabled = !state.nlbn_append;
 
   npnpModes.forEach((mode) => {
     $("btn-npnp-mode-" + mode).classList.toggle("active", state.npnp_mode === mode);
@@ -702,10 +744,12 @@ function queueExportConfigWrite(operation: () => Promise<void>): Promise<void> {
 
 async function syncNlbnExportInputs() {
   const path = ($("nlbn-path-input") as HTMLInputElement).value;
+  const libraryName = ($("nlbn-library-name-input") as HTMLInputElement).value;
   const parallelValue = ($("nlbn-parallel-input") as HTMLInputElement).value;
   const parallel = parsePositiveIntOrFallback(parallelValue, 4);
 
   await invoke("set_nlbn_path", { path });
+  await invoke("set_nlbn_library_name", { libraryName });
   await invoke("set_nlbn_parallel", { parallel });
 }
 
@@ -794,28 +838,17 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("btn-nlbn-export").addEventListener("click", async () => {
     startExportProgress("nlbn", t("export.nlbnRunning"));
-    $("nlbn-not-found").classList.add("hidden");
 
     try {
       await queueExportConfigWrite(async () => {
         await syncNlbnExportInputs();
         await refreshState();
       });
-      await invoke("check_nlbn");
       const result = await invoke<string>("nlbn_export");
       showExportStartResult("nlbn", result);
       await refreshState();
     } catch (error) {
-      const details = errorMessage(error);
-      if (details.includes("nlbn not found")) {
-        exportUi.nlbn.progress = null;
-        exportUi.nlbn.notice = null;
-        rerenderState();
-        $("nlbn-not-found").classList.remove("hidden");
-        return;
-      }
-
-      showExportError("nlbn", details);
+      showExportError("nlbn", errorMessage(error));
       await refreshState();
     }
   });
@@ -839,9 +872,51 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  $("btn-toggle-nlbn-terminal").addEventListener("click", async () => {
+  nlbnModes.forEach((mode) => {
+    $("btn-nlbn-mode-" + mode).addEventListener("click", async () => {
+      await queueExportConfigWrite(async () => {
+        await invoke("set_nlbn_mode", { mode });
+        await refreshState();
+      });
+    });
+  });
+
+  $("btn-toggle-nlbn-append").addEventListener("click", async () => {
+    const active = $("btn-toggle-nlbn-append").classList.contains("active");
     await queueExportConfigWrite(async () => {
-      await invoke("toggle_nlbn_terminal");
+      await invoke("set_nlbn_append", { append: !active });
+      await refreshState();
+    });
+  });
+
+  $("btn-toggle-nlbn-continue-on-error").addEventListener("click", async () => {
+    const active = $("btn-toggle-nlbn-continue-on-error").classList.contains("active");
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_continue_on_error", { continueOnError: !active });
+      await refreshState();
+    });
+  });
+
+  $("btn-toggle-nlbn-overwrite").addEventListener("click", async () => {
+    const active = $("btn-toggle-nlbn-overwrite").classList.contains("active");
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_overwrite", { overwrite: !active });
+      await refreshState();
+    });
+  });
+
+  $("btn-toggle-nlbn-project-relative").addEventListener("click", async () => {
+    const active = $("btn-toggle-nlbn-project-relative").classList.contains("active");
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_project_relative", { projectRelative: !active });
+      await refreshState();
+    });
+  });
+
+  $("btn-apply-nlbn-library-name").addEventListener("click", async () => {
+    const libraryName = ($("nlbn-library-name-input") as HTMLInputElement).value;
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_library_name", { libraryName });
       await refreshState();
     });
   });
@@ -1058,4 +1133,3 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 });
-

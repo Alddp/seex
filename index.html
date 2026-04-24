@@ -158,16 +158,6 @@
               </div>
               <div id="nlbn-status" class="msg msg-warn hidden"></div>
               <div id="nlbn-result" class="msg msg-info hidden"></div>
-              <div id="nlbn-not-found" class="nlbn-prompt hidden">
-                <div class="nlbn-prompt-icon">!</div>
-                <div class="nlbn-prompt-text">
-                  <strong data-i18n="export.nlbnNotFound">nlbn is not installed</strong>
-                  <p data-i18n="export.nlbnInstallHint">Install nlbn and add it to your system PATH to use this feature.</p>
-                  <div class="tech-chip" data-url="https://github.com/linkyourbin/nlbn" style="margin-top:8px;display:inline-flex;">
-                    <span>github.com/linkyourbin/nlbn</span>
-                  </div>
-                </div>
-              </div>
             </div>
 
             <div class="card">
@@ -178,16 +168,38 @@
                 <button class="btn-outline btn-sm" id="btn-browse-nlbn-folder" data-i18n="export.browse">Browse</button>
                 <button class="btn-primary btn-sm" id="btn-apply-nlbn-path" data-i18n="export.apply">Apply</button>
               </div>
-              <div class="row" style="margin-top:10px;">
-                <button class="btn-outline btn-sm" id="btn-toggle-nlbn-terminal" data-i18n="export.toggleTerminal">Toggle Terminal</button>
-                <span id="nlbn-terminal-status" class="hint"></span>
+
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.nlbnMode">Export mode:</label>
+              <div class="row" style="margin-top:4px;">
+                <button class="btn-pill btn-sm" id="btn-nlbn-mode-full" data-i18n="export.full">Full</button>
+                <button class="btn-pill btn-sm" id="btn-nlbn-mode-symbol" data-i18n="export.symbol">Symbol</button>
+                <button class="btn-pill btn-sm" id="btn-nlbn-mode-footprint" data-i18n="export.footprint">Footprint</button>
+                <button class="btn-pill btn-sm" id="btn-nlbn-mode-3d" data-i18n="export.model3d">3D</button>
               </div>
+
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.nlbnOptions">Batch options:</label>
+              <div class="row" style="margin-top:4px;">
+                <button class="btn-pill btn-sm" id="btn-toggle-nlbn-append" data-i18n="export.append">Append</button>
+                <button class="btn-pill btn-sm" id="btn-toggle-nlbn-continue-on-error" data-i18n="export.continueOnError">Continue On Error</button>
+                <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite" data-i18n="export.overwrite">Overwrite</button>
+                <button class="btn-pill btn-sm" id="btn-toggle-nlbn-project-relative" data-i18n="export.projectRelative">Project Relative</button>
+              </div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.nlbnAppendHint">Append targets an existing KiCad library set under the export directory and uses the library name below.</div>
+
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.libraryName">Library name:</label>
+              <div class="row" style="margin-top:4px;">
+                <input type="text" id="nlbn-library-name-input" />
+                <button class="btn-primary btn-sm" id="btn-apply-nlbn-library-name" data-i18n="export.apply">Apply</button>
+              </div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.nlbnLibraryNameHint">Optional base name for the generated KiCad library set under the export directory.</div>
+
               <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.parallel">Parallel jobs:</label>
               <div class="row" style="margin-top:4px;">
                 <input type="text" id="nlbn-parallel-input" />
                 <button class="btn-primary btn-sm" id="btn-apply-nlbn-parallel" data-i18n="export.apply">Apply</button>
               </div>
               <div class="hint" style="margin-top:6px;" data-i18n="export.nlbnParallelHint">nlbn requires --parallel to be at least 1.</div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.projectRelativeHint">Project Relative switches 3D model paths in generated footprints to KIPRJMOD-style references.</div>
               <div class="hint" style="margin-top:6px;" data-i18n="export.example">Example: C:\Users\xxx\lib</div>
             </div>
 
@@ -286,7 +298,7 @@
               <div class="about-info">
                 <h3>SeEx</h3>
                 <p class="about-tagline" data-i18n="about.tagline">Clipboard Event Tracker</p>
-                <p class="about-version">v0.3.3</p>
+                <p class="about-version">v0.3.4</p>
                 <p class="about-desc" data-i18n="about.desc">Monitors clipboard in real time, extracts component IDs using keyword or regex, and exports via nlbn or npnp.</p>
                 <div class="about-tech-row">
                   <div class="tech-chip" data-url="https://github.com/linkyourbin/nlbn"><span>nlbn</span></div>

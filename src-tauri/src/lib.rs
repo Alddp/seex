@@ -20,7 +20,13 @@ pub struct AppState {
     pub nlbn_output_path: String,
     pub nlbn_last_result: Option<String>,
     pub nlbn_show_terminal: bool,
+    pub nlbn_mode: String,
+    pub nlbn_append: bool,
+    pub nlbn_library_name: String,
     pub nlbn_parallel: usize,
+    pub nlbn_continue_on_error: bool,
+    pub nlbn_overwrite: bool,
+    pub nlbn_project_relative: bool,
     pub nlbn_running: bool,
     pub npnp_output_path: String,
     pub npnp_last_result: Option<String>,
@@ -49,7 +55,13 @@ fn snapshot_config(state: &MonitorState) -> AppConfig {
         nlbn: NlbnConfig {
             output_path: state.nlbn_output_path.clone(),
             show_terminal: state.nlbn_show_terminal,
+            mode: state.nlbn_mode.clone(),
+            append: state.nlbn_append,
+            library_name: state.nlbn_library_name.clone(),
             parallel: state.nlbn_parallel,
+            continue_on_error: state.nlbn_continue_on_error,
+            overwrite: state.nlbn_overwrite,
+            project_relative: state.nlbn_project_relative,
         },
         npnp: NpnpConfig {
             output_path: state.npnp_output_path.clone(),
@@ -88,7 +100,13 @@ fn get_state(monitor: State<ManagedMonitor>) -> AppState {
             nlbn_output_path: m.nlbn_output_path.clone(),
             nlbn_last_result: m.nlbn_last_result.clone(),
             nlbn_show_terminal: m.nlbn_show_terminal,
+            nlbn_mode: m.nlbn_mode.clone(),
+            nlbn_append: m.nlbn_append,
+            nlbn_library_name: m.nlbn_library_name.clone(),
             nlbn_parallel: m.nlbn_parallel,
+            nlbn_continue_on_error: m.nlbn_continue_on_error,
+            nlbn_overwrite: m.nlbn_overwrite,
+            nlbn_project_relative: m.nlbn_project_relative,
             nlbn_running: m.nlbn_running,
             npnp_output_path: m.npnp_output_path.clone(),
             npnp_last_result: m.npnp_last_result.clone(),
@@ -112,7 +130,13 @@ fn get_state(monitor: State<ManagedMonitor>) -> AppState {
             nlbn_output_path: defaults.nlbn.output_path,
             nlbn_last_result: None,
             nlbn_show_terminal: defaults.nlbn.show_terminal,
+            nlbn_mode: defaults.nlbn.mode,
+            nlbn_append: defaults.nlbn.append,
+            nlbn_library_name: defaults.nlbn.library_name,
             nlbn_parallel: defaults.nlbn.parallel,
+            nlbn_continue_on_error: defaults.nlbn.continue_on_error,
+            nlbn_overwrite: defaults.nlbn.overwrite,
+            nlbn_project_relative: defaults.nlbn.project_relative,
             nlbn_running: false,
             npnp_output_path: defaults.npnp.output_path,
             npnp_last_result: None,
@@ -292,6 +316,54 @@ fn set_nlbn_parallel(monitor: State<ManagedMonitor>, parallel: usize) {
 }
 
 #[tauri::command]
+fn set_nlbn_mode(monitor: State<ManagedMonitor>, mode: String) {
+    if let Ok(mut m) = monitor.state.lock() {
+        m.set_nlbn_mode(mode);
+    }
+    save_config(&monitor);
+}
+
+#[tauri::command]
+fn set_nlbn_append(monitor: State<ManagedMonitor>, append: bool) {
+    if let Ok(mut m) = monitor.state.lock() {
+        m.set_nlbn_append(append);
+    }
+    save_config(&monitor);
+}
+
+#[tauri::command]
+fn set_nlbn_library_name(monitor: State<ManagedMonitor>, library_name: String) {
+    if let Ok(mut m) = monitor.state.lock() {
+        m.set_nlbn_library_name(library_name);
+    }
+    save_config(&monitor);
+}
+
+#[tauri::command]
+fn set_nlbn_continue_on_error(monitor: State<ManagedMonitor>, continue_on_error: bool) {
+    if let Ok(mut m) = monitor.state.lock() {
+        m.set_nlbn_continue_on_error(continue_on_error);
+    }
+    save_config(&monitor);
+}
+
+#[tauri::command]
+fn set_nlbn_overwrite(monitor: State<ManagedMonitor>, overwrite: bool) {
+    if let Ok(mut m) = monitor.state.lock() {
+        m.set_nlbn_overwrite(overwrite);
+    }
+    save_config(&monitor);
+}
+
+#[tauri::command]
+fn set_nlbn_project_relative(monitor: State<ManagedMonitor>, project_relative: bool) {
+    if let Ok(mut m) = monitor.state.lock() {
+        m.set_nlbn_project_relative(project_relative);
+    }
+    save_config(&monitor);
+}
+
+#[tauri::command]
 fn set_npnp_path(monitor: State<ManagedMonitor>, path: String) {
     if let Ok(mut m) = monitor.state.lock() {
         m.set_npnp_output_path(path);
@@ -384,8 +456,13 @@ fn nlbn_export(monitor: State<ManagedMonitor>, app_handle: AppHandle) -> String 
         nlbn::ExportRequest {
             ids,
             output_path: m.nlbn_output_path.clone(),
-            show_terminal: m.nlbn_show_terminal,
+            mode: m.nlbn_mode.clone(),
+            append: m.nlbn_append,
+            library_name: m.nlbn_library_name.clone(),
             parallel: m.nlbn_parallel,
+            continue_on_error: m.nlbn_continue_on_error,
+            overwrite: m.nlbn_overwrite,
+            project_relative: m.nlbn_project_relative,
         }
     } else {
         return "State lock failed".to_string();
@@ -444,8 +521,14 @@ pub fn run() {
     let state = Arc::new(Mutex::new(MonitorState::new()));
     if let Ok(mut s) = state.lock() {
         s.set_nlbn_output_path(config.nlbn.output_path.clone());
-        s.nlbn_show_terminal = config.nlbn.show_terminal;
+        s.nlbn_show_terminal = false;
+        s.set_nlbn_mode(config.nlbn.mode.clone());
+        s.set_nlbn_append(config.nlbn.append);
+        s.set_nlbn_library_name(config.nlbn.library_name.clone());
         s.set_nlbn_parallel(config.nlbn.parallel);
+        s.set_nlbn_continue_on_error(config.nlbn.continue_on_error);
+        s.set_nlbn_overwrite(config.nlbn.overwrite);
+        s.set_nlbn_project_relative(config.nlbn.project_relative);
         s.set_npnp_output_path(config.npnp.output_path.clone());
         s.set_npnp_mode(config.npnp.mode.clone());
         s.set_npnp_merge(config.npnp.merge);
@@ -490,7 +573,13 @@ pub fn run() {
             set_matched_save_path,
             set_nlbn_path,
             toggle_nlbn_terminal,
+            set_nlbn_mode,
+            set_nlbn_append,
+            set_nlbn_library_name,
             set_nlbn_parallel,
+            set_nlbn_continue_on_error,
+            set_nlbn_overwrite,
+            set_nlbn_project_relative,
             set_npnp_path,
             set_npnp_mode,
             set_npnp_merge,

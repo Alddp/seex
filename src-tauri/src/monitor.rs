@@ -29,7 +29,13 @@ pub struct MonitorState {
     pub nlbn_output_path: String,
     pub nlbn_last_result: Option<String>,
     pub nlbn_show_terminal: bool,
+    pub nlbn_mode: String,
+    pub nlbn_append: bool,
+    pub nlbn_library_name: String,
     pub nlbn_parallel: usize,
+    pub nlbn_continue_on_error: bool,
+    pub nlbn_overwrite: bool,
+    pub nlbn_project_relative: bool,
     pub nlbn_running: bool,
     pub npnp_output_path: String,
     pub npnp_last_result: Option<String>,
@@ -57,8 +63,14 @@ impl MonitorState {
             match_debug_log: Vec::new(),
             nlbn_output_path: "~/lib".to_string(),
             nlbn_last_result: None,
-            nlbn_show_terminal: true,
+            nlbn_show_terminal: false,
+            nlbn_mode: "full".to_string(),
+            nlbn_append: false,
+            nlbn_library_name: String::new(),
             nlbn_parallel: 4,
+            nlbn_continue_on_error: false,
+            nlbn_overwrite: false,
+            nlbn_project_relative: false,
             nlbn_running: false,
             npnp_output_path: "npnp_export".to_string(),
             npnp_last_result: None,
@@ -165,15 +177,49 @@ impl MonitorState {
     }
 
     pub fn set_nlbn_output_path(&mut self, path: String) {
-        self.nlbn_output_path = path;
+        let trimmed = path.trim();
+        self.nlbn_output_path = if trimmed.is_empty() {
+            "~/lib".to_string()
+        } else {
+            trimmed.to_string()
+        };
     }
 
     pub fn toggle_nlbn_show_terminal(&mut self) {
-        self.nlbn_show_terminal = !self.nlbn_show_terminal;
+        self.nlbn_show_terminal = false;
+    }
+
+    pub fn set_nlbn_mode(&mut self, mode: String) {
+        self.nlbn_mode = match mode.trim().to_ascii_lowercase().as_str() {
+            "symbol" => "symbol".to_string(),
+            "footprint" => "footprint".to_string(),
+            "3d" => "3d".to_string(),
+            _ => "full".to_string(),
+        };
+    }
+
+    pub fn set_nlbn_append(&mut self, append: bool) {
+        self.nlbn_append = append;
+    }
+
+    pub fn set_nlbn_library_name(&mut self, library_name: String) {
+        self.nlbn_library_name = library_name.trim().to_string();
     }
 
     pub fn set_nlbn_parallel(&mut self, parallel: usize) {
         self.nlbn_parallel = parallel.max(1);
+    }
+
+    pub fn set_nlbn_continue_on_error(&mut self, continue_on_error: bool) {
+        self.nlbn_continue_on_error = continue_on_error;
+    }
+
+    pub fn set_nlbn_overwrite(&mut self, overwrite: bool) {
+        self.nlbn_overwrite = overwrite;
+    }
+
+    pub fn set_nlbn_project_relative(&mut self, project_relative: bool) {
+        self.nlbn_project_relative = project_relative;
     }
 
     pub fn set_npnp_output_path(&mut self, path: String) {
