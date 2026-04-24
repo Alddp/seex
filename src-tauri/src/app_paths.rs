@@ -5,6 +5,7 @@ use tauri::{AppHandle, Manager};
 
 const CONFIG_FILENAME: &str = "export_config.json";
 const LEGACY_NLBN_CONFIG_FILENAME: &str = "nlbn_config.txt";
+const APP_IDENTIFIER: &str = "rustopus.com";
 
 #[derive(Clone, Debug)]
 pub struct AppPaths {
@@ -36,9 +37,65 @@ impl AppPaths {
             config_dir,
             data_dir,
             cache_dir,
-            legacy_exe_dir: std::env::current_exe()
-                .ok()
-                .and_then(|path| path.parent().map(Path::to_path_buf)),
+            legacy_exe_dir: current_exe_dir(),
+        })
+    }
+
+    pub fn resolve_native() -> Result<Self, String> {
+        let home = std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .ok_or_else(|| "failed to resolve HOME for native app paths".to_string())?;
+
+        #[cfg(target_os = "macos")]
+        let (config_dir, data_dir, cache_dir) = {
+            let support = home
+                .join("Library")
+                .join("Application Support")
+                .join(APP_IDENTIFIER);
+            let cache = home.join("Library").join("Caches").join(APP_IDENTIFIER);
+            (support.clone(), support, cache)
+        };
+
+        #[cfg(target_os = "linux")]
+        let (config_dir, data_dir, cache_dir) = {
+            let config_base = std::env::var_os("XDG_CONFIG_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".config"));
+            let data_base = std::env::var_os("XDG_DATA_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".local").join("share"));
+            let cache_base = std::env::var_os("XDG_CACHE_HOME")
+                .map(PathBuf::from)
+                .unwrap_or_else(|| home.join(".cache"));
+            (
+                config_base.join(APP_IDENTIFIER),
+                data_base.join(APP_IDENTIFIER),
+                cache_base.join(APP_IDENTIFIER),
+            )
+        };
+
+        #[cfg(target_os = "windows")]
+        let (config_dir, data_dir, cache_dir) = {
+            let roaming = std::env::var_os("APPDATA")
+                .map(PathBuf::from)
+                .ok_or_else(|| "failed to resolve APPDATA for native app paths".to_string())?;
+            let local = std::env::var_os("LOCALAPPDATA")
+                .map(PathBuf::from)
+                .ok_or_else(|| "failed to resolve LOCALAPPDATA for native app paths".to_string())?;
+            (
+                roaming.join(APP_IDENTIFIER),
+                roaming.join(APP_IDENTIFIER),
+                local.join(APP_IDENTIFIER).join("cache"),
+            )
+        };
+
+        ensure_dirs([&config_dir, &data_dir, &cache_dir])?;
+
+        Ok(Self {
+            config_dir,
+            data_dir,
+            cache_dir,
+            legacy_exe_dir: current_exe_dir(),
         })
     }
 
@@ -66,6 +123,10 @@ impl AppPaths {
         self.data_dir.join("matched.txt")
     }
 
+    pub fn default_imported_parts_file(&self) -> PathBuf {
+        self.data_dir.join("imported_lcsc_parts.txt")
+    }
+
     pub fn default_nlbn_output_dir(&self) -> PathBuf {
         self.data_dir.join("nlbn_export")
     }
@@ -80,6 +141,10 @@ impl AppPaths {
 
     pub fn default_matched_save_path_string(&self) -> String {
         self.default_matched_file().display().to_string()
+    }
+
+    pub fn default_imported_parts_save_path_string(&self) -> String {
+        self.default_imported_parts_file().display().to_string()
     }
 
     pub fn default_nlbn_output_dir_string(&self) -> String {
@@ -121,6 +186,14 @@ impl AppPaths {
 
     pub fn resolve_matched_save_path(&self, path: &str) -> String {
         self.resolve_monitor_save_path(path, "matched.txt", self.default_matched_file())
+    }
+
+    pub fn resolve_imported_parts_save_path(&self, path: &str) -> String {
+        self.resolve_monitor_save_path(
+            path,
+            "imported_lcsc_parts.txt",
+            self.default_imported_parts_file(),
+        )
     }
 
     pub fn resolve_nlbn_output_path(&self, path: &str) -> String {
@@ -177,6 +250,20 @@ impl AppPaths {
     }
 }
 
+fn ensure_dirs<'a>(dirs: impl IntoIterator<Item = &'a PathBuf>) -> Result<(), String> {
+    for dir in dirs {
+        fs::create_dir_all(dir)
+            .map_err(|err| format!("failed to create {}: {err}", dir.display()))?;
+    }
+    Ok(())
+}
+
+fn current_exe_dir() -> Option<PathBuf> {
+    std::env::current_exe()
+        .ok()
+        .and_then(|path| path.parent().map(Path::to_path_buf))
+}
+
 #[cfg(test)]
 mod tests {
     use super::AppPaths;
@@ -202,6 +289,10 @@ mod tests {
         assert_eq!(
             paths.resolve_history_save_path("/tmp/custom-history.txt"),
             "/tmp/custom-history.txt"
+        );
+        assert_eq!(
+            paths.resolve_imported_parts_save_path("imported_lcsc_parts.txt"),
+            "/tmp/seex-data/imported_lcsc_parts.txt"
         );
     }
 }

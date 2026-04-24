@@ -31,6 +31,10 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
             <span class="nav-label" data-i18n="nav.export">Export</span>
           </li>
+          <li class="nav-item" data-page="imported">
+            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/><path d="m18 15 2 2-2 2"/></svg>
+            <span class="nav-label" data-i18n="nav.imported">Imported</span>
+          </li>
           <li class="nav-item" data-page="language">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
             <span class="nav-label" data-i18n="nav.language">Language</span>
@@ -189,6 +193,12 @@
                 <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-library" data-i18n="export.nlbn3dModeLibrary">Library Relative</button>
               </div>
               <div id="nlbn-3d-mode-hint" class="hint" style="margin-top:6px;" data-i18n="export.nlbn3dModeHint">Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.</div>
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.nlbnOverwrite">Overwrite existing symbol:</label>
+              <div class="row" style="margin-top:4px;">
+                <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite" data-i18n="export.nlbnOverwriteToggle">Overwrite Existing</button>
+                <span id="nlbn-overwrite-status" class="hint"></span>
+              </div>
+              <div class="hint" style="margin-top:6px;" data-i18n="export.nlbnOverwriteHint">Re-export can replace existing symbols in the KiCad symbol library when enabled.</div>
               <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.parallel">Parallel jobs:</label>
               <div class="row" style="margin-top:4px;">
                 <input type="text" id="nlbn-parallel-input" />
@@ -257,6 +267,43 @@
                 <button class="btn-primary btn-sm" id="btn-apply-npnp-parallel" data-i18n="export.apply">Apply</button>
               </div>
               <div class="hint" style="margin-top:6px;" data-i18n="export.npnpParallelHint">Parallel jobs apply only to non-merged npnp exports and must be at least 1.</div>
+            </div>
+          </div>
+        </section>
+
+        <section class="page" id="page-imported">
+          <div class="page-header">
+            <h2 data-i18n="nav.imported">Imported</h2>
+            <span class="page-desc" data-i18n="imported.desc">Browse imported nlbn symbols from the active KiCad library</span>
+          </div>
+          <div class="page-body">
+            <div class="card card-full">
+              <div class="card-title-row">
+                <span class="card-title accent"><span data-i18n="imported.title">Imported Symbols</span> <span class="badge" id="imported-count">0</span></span>
+                <div class="row imported-toolbar">
+                  <button class="btn-outline btn-sm" id="btn-refresh-imported" data-i18n="imported.refresh">Refresh</button>
+                  <button class="btn-outline btn-sm" id="btn-import-imported-parts" data-i18n="imported.importParts">Import Parts</button>
+                  <button class="btn-primary btn-sm" id="btn-export-imported-parts" data-i18n="imported.exportParts">Export Parts</button>
+                </div>
+              </div>
+              <div id="imported-scanned-path" class="hint"></div>
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="imported.exportFile">Parts file:</label>
+              <div class="row" style="margin-top:4px;">
+                <input type="text" id="imported-parts-save-path-input" />
+                <button class="btn-outline btn-sm" id="btn-browse-imported-parts-save-path" data-i18n="export.browse">Browse</button>
+                <button class="btn-primary btn-sm" id="btn-apply-imported-parts-save-path" data-i18n="export.apply">Apply</button>
+              </div>
+              <div class="hint" style="margin-top:6px;" data-i18n="imported.exportHint">Used by Export Parts and Import Parts.</div>
+              <div id="imported-feedback" class="msg msg-info hidden"></div>
+              <div id="imported-table" class="imported-table hidden">
+                <div class="imported-head">
+                  <span data-i18n="imported.lcscPart">LCSC Part</span>
+                  <span data-i18n="imported.symbolName">Symbol Name</span>
+                  <span data-i18n="imported.actions">Actions</span>
+                </div>
+                <div id="imported-list" class="scroll-area scroll-area-full imported-list"></div>
+              </div>
+              <div id="imported-empty" class="empty-state" data-i18n="imported.empty">No imported symbols found in the current nlbn output library.</div>
             </div>
           </div>
         </section>

@@ -13,6 +13,7 @@ interface AppState {
   nlbn_parallel: number;
   nlbn_running: boolean;
   nlbn_path_mode?: string | null;
+  nlbn_overwrite?: boolean;
   npnp_output_path: string;
   npnp_last_result: string | null;
   npnp_running: boolean;
@@ -28,6 +29,7 @@ interface AppState {
   matched_count: number;
   history_save_path: string;
   matched_save_path: string;
+  imported_parts_save_path: string;
 }
 
 type ExportTool = "nlbn" | "npnp";
@@ -59,9 +61,20 @@ interface ExportProgressState {
   message: string;
 }
 
+interface ImportedSymbol {
+  lcsc_part: string;
+  symbol_name: string;
+}
+
+interface ImportedSymbolsResponse {
+  scanned_path: string;
+  items: ImportedSymbol[];
+}
+
 type Lang = "en" | "zh";
 type NpnpMode = "full" | "schlib" | "pcblib";
 type Nlbn3dPathMode = "auto" | "project_relative" | "library_relative";
+type PageName = "monitor" | "history" | "export" | "imported" | "language" | "about";
 
 interface ExportCardOptions {
   tool: ExportTool;
@@ -87,6 +100,7 @@ const enTranslations: Record<string, string> = {
   "nav.monitor": "Monitor",
   "nav.history": "History",
   "nav.export": "Export",
+  "nav.imported": "Imported",
   "nav.language": "Language",
   "nav.about": "About",
   "status.listening": "Listening",
@@ -119,6 +133,22 @@ const enTranslations: Record<string, string> = {
   "history.desc": "Clipboard history",
   "history.entries": "entries",
   "history.empty": "No history yet",
+  "imported.desc": "Browse imported nlbn symbols from the active KiCad library",
+  "imported.title": "Imported Symbols",
+  "imported.refresh": "Refresh",
+  "imported.importParts": "Import Parts",
+  "imported.exportParts": "Export Parts",
+  "imported.exportFile": "Parts file:",
+  "imported.exportHint": "Used by Export Parts and Import Parts.",
+  "imported.exportDialog": "Choose LCSC Parts file",
+  "imported.scannedPath": "Scanned directory:",
+  "imported.lcscPart": "LCSC Part",
+  "imported.symbolName": "Symbol Name",
+  "imported.actions": "Actions",
+  "imported.loading": "Loading imported symbols...",
+  "imported.empty": "No imported symbols found in the current nlbn output library.",
+  "imported.copyPart": "Copy LCSC Part",
+  "imported.copied": "LCSC Part copied to clipboard.",
   "export.desc": "Component export integrations",
   "export.nlbnExport": "nlbn Export",
   "export.npnpExport": "npnp Export",
@@ -141,6 +171,11 @@ const enTranslations: Record<string, string> = {
   "export.nlbn3dModeProject": "KiCad Project",
   "export.nlbn3dModeLibrary": "Library Relative",
   "export.nlbn3dModeHint": "Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.",
+  "export.nlbnOverwrite": "Overwrite existing symbol:",
+  "export.nlbnOverwriteToggle": "Overwrite Existing",
+  "export.overwriteOn": "Overwrite: ON",
+  "export.overwriteOff": "Overwrite: OFF",
+  "export.nlbnOverwriteHint": "Re-export can replace existing symbols in the KiCad symbol library when enabled.",
   "export.example": "Example: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "nlbn is not installed",
   "export.nlbnInstallHint": "Install nlbn and add it to your system PATH to use this feature.",
@@ -174,6 +209,7 @@ const zhTranslations: Record<string, string> = {
   "nav.monitor": "\u76d1\u542c",
   "nav.history": "\u5386\u53f2",
   "nav.export": "\u5bfc\u51fa",
+  "nav.imported": "\u5df2\u5bfc\u5165",
   "nav.language": "\u8bed\u8a00",
   "nav.about": "\u5173\u4e8e",
   "status.listening": "\u76d1\u542c\u4e2d",
@@ -206,6 +242,22 @@ const zhTranslations: Record<string, string> = {
   "history.desc": "\u526a\u8d34\u677f\u5386\u53f2",
   "history.entries": "\u6761",
   "history.empty": "\u6682\u65e0\u5386\u53f2\u8bb0\u5f55",
+  "imported.desc": "\u67e5\u770b\u5f53\u524d nlbn KiCad \u7b26\u53f7\u5e93\u4e2d\u5df2\u5bfc\u5165\u7684\u7b26\u53f7",
+  "imported.title": "\u5df2\u5bfc\u5165\u7b26\u53f7",
+  "imported.refresh": "\u5237\u65b0",
+  "imported.importParts": "\u5bfc\u5165 Part",
+  "imported.exportParts": "\u5bfc\u51fa Part",
+  "imported.exportFile": "Part \u6587\u4ef6:",
+  "imported.exportHint": "\u7528\u4e8e\u201c\u5bfc\u51fa Part\u201d\u548c\u201c\u5bfc\u5165 Part\u201d\u6309\u94ae\u3002",
+  "imported.exportDialog": "\u9009\u62e9 LCSC Part \u6587\u4ef6",
+  "imported.scannedPath": "\u626b\u63cf\u76ee\u5f55:",
+  "imported.lcscPart": "LCSC Part",
+  "imported.symbolName": "\u7b26\u53f7\u540d",
+  "imported.actions": "\u64cd\u4f5c",
+  "imported.loading": "\u6b63\u5728\u52a0\u8f7d\u5df2\u5bfc\u5165\u7b26\u53f7...",
+  "imported.empty": "\u5f53\u524d nlbn \u8f93\u51fa\u7b26\u53f7\u5e93\u4e2d\u8fd8\u6ca1\u6709\u627e\u5230\u5df2\u5bfc\u5165\u7b26\u53f7\u3002",
+  "imported.copyPart": "\u590d\u5236 LCSC Part",
+  "imported.copied": "LCSC Part \u5df2\u590d\u5236\u5230\u526a\u8d34\u677f\u3002",
   "export.desc": "\u5143\u4ef6\u5bfc\u51fa\u96c6\u6210",
   "export.nlbnExport": "nlbn \u5bfc\u51fa",
   "export.npnpExport": "npnp \u5bfc\u51fa",
@@ -228,6 +280,11 @@ const zhTranslations: Record<string, string> = {
   "export.nlbn3dModeProject": "KiCad \u9879\u76ee",
   "export.nlbn3dModeLibrary": "\u5e93\u76f8\u5bf9",
   "export.nlbn3dModeHint": "\u81ea\u52a8\u6a21\u5f0f\u4f1a\u6839\u636e\u5bfc\u51fa\u76ee\u5f55\u63a8\u65ad\u8def\u5f84\u7b56\u7565\uff0c\u4e5f\u53ef\u624b\u52a8\u6307\u5b9a KiCad 3D \u8def\u5f84\u751f\u6210\u65b9\u5f0f\u3002",
+  "export.nlbnOverwrite": "\u8986\u76d6\u5df2\u6709\u7b26\u53f7:",
+  "export.nlbnOverwriteToggle": "\u8986\u76d6\u5df2\u6709",
+  "export.overwriteOn": "\u8986\u76d6: \u5f00",
+  "export.overwriteOff": "\u8986\u76d6: \u5173",
+  "export.nlbnOverwriteHint": "\u542f\u7528\u540e\uff0c\u91cd\u65b0\u5bfc\u51fa\u53ef\u4ee5\u66ff\u6362 KiCad \u7b26\u53f7\u5e93\u4e2d\u5df2\u5b58\u5728\u7684\u7b26\u53f7\u3002",
   "export.example": "\u793a\u4f8b: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "\u672a\u5b89\u88c5 nlbn",
   "export.nlbnInstallHint": "\u8bf7\u5148\u5b89\u88c5 nlbn\uff0c\u5e76\u5c06\u5176\u52a0\u5165\u7cfb\u7edf PATH \u540e\u518d\u4f7f\u7528\u6b64\u529f\u80fd\u3002",
@@ -260,6 +317,7 @@ const translations: Record<Lang, Record<string, string>> = {
 };
 
 let currentLang: Lang = "en";
+let currentPage: PageName = "monitor";
 let showMatched = true;
 let showHistory = true;
 let matchQuick = true;
@@ -275,6 +333,24 @@ const nlbnUiState: {
   mode: Nlbn3dPathMode;
 } = {
   mode: "auto",
+};
+
+const importedUi: {
+  loading: boolean;
+  busy: boolean;
+  initialized: boolean;
+  scannedPath: string;
+  items: ImportedSymbol[];
+  error: string | null;
+  notice: ExportNotice | null;
+} = {
+  loading: false,
+  busy: false,
+  initialized: false,
+  scannedPath: "",
+  items: [],
+  error: null,
+  notice: null,
 };
 
 const PATTERN_QUICK = "regex:(?m)^(C\\d{3,})$";
@@ -337,10 +413,12 @@ function applyLanguage(lang: Lang) {
   $("btn-lang-en").classList.toggle("active", lang === "en");
   $("btn-lang-zh").classList.toggle("active", lang === "zh");
   $("btn-toggle-matched").textContent = showMatched ? t("monitor.show") : t("monitor.hide");
+  renderImportedPanel();
   rerenderState();
 }
 
-function switchPage(pageName: string) {
+function switchPage(pageName: PageName) {
+  currentPage = pageName;
   document.querySelectorAll(".page").forEach((p) => p.classList.remove("active"));
   document.querySelectorAll(".nav-item").forEach((n) => n.classList.remove("active"));
 
@@ -348,6 +426,10 @@ function switchPage(pageName: string) {
   const nav = document.querySelector(`.nav-item[data-page="${pageName}"]`);
   if (page) page.classList.add("active");
   if (nav) nav.classList.add("active");
+
+  if (pageName === "imported") {
+    void loadImportedSymbols();
+  }
 }
 
 function syncInputValue(id: string, serverValue: string) {
@@ -531,8 +613,11 @@ function renderState(state: AppState) {
   syncInputValue("npnp-parallel-input", String(state.npnp_parallel));
   syncInputValue("history-save-path-input", state.history_save_path);
   syncInputValue("matched-save-path-input", state.matched_save_path);
+  syncInputValue("imported-parts-save-path-input", state.imported_parts_save_path);
 
   $("nlbn-terminal-status").textContent = state.nlbn_show_terminal ? t("export.terminalOn") : t("export.terminalOff");
+  $("btn-toggle-nlbn-overwrite").classList.toggle("active", Boolean(state.nlbn_overwrite));
+  $("nlbn-overwrite-status").textContent = state.nlbn_overwrite ? t("export.overwriteOn") : t("export.overwriteOff");
   renderNlbn3dMode();
 
   const monBtn = $("btn-toggle-monitor");
@@ -623,6 +708,8 @@ function renderState(state: AppState) {
     $("history-list").classList.add("hidden");
     $("history-empty").classList.add("hidden");
   }
+
+  renderImportedPanel();
 }
 
 function renderMatchedList(items: [string, string][]) {
@@ -662,6 +749,85 @@ function renderHistoryList(items: [string, string][]) {
       </div>`;
     c.appendChild(div);
   });
+}
+
+function renderImportedList(items: ImportedSymbol[]) {
+  const copyLabel = t("monitor.copy");
+  const copyTitle = t("imported.copyPart");
+  const container = $("imported-list");
+  container.innerHTML = "";
+
+  items.forEach((item) => {
+    const row = document.createElement("div");
+    row.className = "imported-row";
+    row.innerHTML = `
+      <span class="imported-cell imported-part">${escapeHtml(item.lcsc_part)}</span>
+      <span class="imported-cell imported-symbol">${escapeHtml(item.symbol_name)}</span>
+      <span class="imported-actions">
+        <button data-copy-imported="${escapeAttr(item.lcsc_part)}" title="${copyTitle}">${copyLabel}</button>
+      </span>`;
+    container.appendChild(row);
+  });
+}
+
+function renderImportedPanel() {
+  const count = $("imported-count");
+  const path = $("imported-scanned-path");
+  const feedback = $("imported-feedback");
+  const table = $("imported-table");
+  const empty = $("imported-empty");
+  const refreshButton = $("btn-refresh-imported") as HTMLButtonElement;
+  const browseButton = $("btn-browse-imported-parts-save-path") as HTMLButtonElement;
+  const applyButton = $("btn-apply-imported-parts-save-path") as HTMLButtonElement;
+  const importButton = $("btn-import-imported-parts") as HTMLButtonElement;
+  const exportButton = $("btn-export-imported-parts") as HTMLButtonElement;
+  const controlsDisabled = importedUi.loading || importedUi.busy;
+
+  count.textContent = String(importedUi.items.length);
+  refreshButton.disabled = controlsDisabled;
+  browseButton.disabled = controlsDisabled;
+  applyButton.disabled = controlsDisabled;
+  importButton.disabled = controlsDisabled;
+  exportButton.disabled = controlsDisabled || importedUi.items.length === 0;
+
+  const resolvedPath =
+    importedUi.scannedPath || lastState?.nlbn_output_path || t("status.none");
+  path.textContent = `${t("imported.scannedPath")} ${resolvedPath}`;
+
+  if (importedUi.notice) {
+    feedback.textContent = importedUi.notice.message;
+    feedback.className = `msg ${messageClass(importedUi.notice.kind)}`;
+  } else if (importedUi.error) {
+    feedback.textContent = importedUi.error;
+    feedback.className = "msg msg-error";
+  } else {
+    feedback.textContent = "";
+    feedback.className = "msg msg-info hidden";
+  }
+
+  if (importedUi.loading) {
+    table.classList.add("hidden");
+    empty.classList.remove("hidden");
+    empty.textContent = t("imported.loading");
+    return;
+  }
+
+  if (importedUi.error) {
+    table.classList.add("hidden");
+    empty.classList.add("hidden");
+    return;
+  }
+
+  if (importedUi.items.length > 0) {
+    renderImportedList(importedUi.items);
+    table.classList.remove("hidden");
+    empty.classList.add("hidden");
+    return;
+  }
+
+  table.classList.add("hidden");
+  empty.classList.remove("hidden");
+  empty.textContent = t("imported.empty");
 }
 
 async function refreshState() {
@@ -724,6 +890,14 @@ function classifySaveResult(message: string): ExportMessageKind {
   return "warn";
 }
 
+function showImportedResult(message: string, kind?: ExportMessageKind) {
+  importedUi.notice = {
+    kind: kind ?? classifySaveResult(message),
+    message,
+  };
+  renderImportedPanel();
+}
+
 function showExportStartResult(tool: ExportTool, result: string): boolean {
   if (result === "Export started") {
     setExportNotice(tool, null);
@@ -742,12 +916,47 @@ function showExportError(tool: ExportTool, error: string) {
   rerenderState();
 }
 
+async function loadImportedSymbols() {
+  importedUi.loading = true;
+  importedUi.notice = null;
+  renderImportedPanel();
+
+  try {
+    const response = await invoke<ImportedSymbolsResponse>("get_imported_symbols");
+    importedUi.loading = false;
+    importedUi.initialized = true;
+    importedUi.scannedPath = response.scanned_path;
+    importedUi.items = response.items;
+    importedUi.error = null;
+  } catch (error) {
+    importedUi.loading = false;
+    importedUi.initialized = true;
+    importedUi.scannedPath = "";
+    importedUi.items = [];
+    importedUi.error = errorMessage(error);
+  }
+
+  renderImportedPanel();
+}
+
 let pendingExportConfigWrite: Promise<void> = Promise.resolve();
 
 function queueExportConfigWrite(operation: () => Promise<void>): Promise<void> {
   const run = pendingExportConfigWrite.then(operation, operation);
   pendingExportConfigWrite = run.catch(() => {});
   return run;
+}
+
+async function runImportedAction(operation: () => Promise<void>) {
+  if (importedUi.loading || importedUi.busy) return;
+  importedUi.busy = true;
+  renderImportedPanel();
+  try {
+    await operation();
+  } finally {
+    importedUi.busy = false;
+    renderImportedPanel();
+  }
 }
 
 async function syncNlbnExportInputs() {
@@ -793,12 +1002,15 @@ window.addEventListener("DOMContentLoaded", async () => {
   await listen<ExportFinishedPayload>("export-finished", async (event) => {
     finishExportProgress(event.payload);
     await refreshState();
+    if (event.payload.tool === "nlbn" && event.payload.success && currentPage === "imported") {
+      await loadImportedSymbols();
+    }
   });
 
   document.querySelectorAll(".nav-item").forEach((item) => {
     item.addEventListener("click", () => {
       const page = item.getAttribute("data-page");
-      if (page) switchPage(page);
+      if (page) switchPage(page as PageName);
     });
   });
 
@@ -850,7 +1062,6 @@ window.addEventListener("DOMContentLoaded", async () => {
   });
 
   $("btn-nlbn-export").addEventListener("click", async () => {
-    startExportProgress("nlbn", t("export.nlbnRunning"));
     $("nlbn-not-found").classList.add("hidden");
 
     try {
@@ -859,6 +1070,7 @@ window.addEventListener("DOMContentLoaded", async () => {
         await refreshState();
       });
       await invoke("check_nlbn");
+      startExportProgress("nlbn", t("export.nlbnRunning"));
       const result = await invoke<string>("nlbn_export");
       showExportStartResult("nlbn", result);
       await refreshState();
@@ -899,6 +1111,14 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("btn-toggle-nlbn-terminal").addEventListener("click", async () => {
     await queueExportConfigWrite(async () => {
       await invoke("toggle_nlbn_terminal");
+      await refreshState();
+    });
+  });
+
+  $("btn-toggle-nlbn-overwrite").addEventListener("click", async () => {
+    const active = $("btn-toggle-nlbn-overwrite").classList.contains("active");
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_overwrite", { overwrite: !active });
       await refreshState();
     });
   });
@@ -994,6 +1214,83 @@ window.addEventListener("DOMContentLoaded", async () => {
     await queueExportConfigWrite(async () => {
       await invoke("set_npnp_force", { force: !active });
       await refreshState();
+    });
+  });
+
+  $("btn-refresh-imported").addEventListener("click", async () => {
+    if (importedUi.loading || importedUi.busy) return;
+    importedUi.notice = null;
+    await loadImportedSymbols();
+  });
+
+  $("btn-apply-imported-parts-save-path").addEventListener("click", async () => {
+    if (importedUi.loading || importedUi.busy) return;
+    importedUi.notice = null;
+    const path = ($("imported-parts-save-path-input") as HTMLInputElement).value;
+    await queueExportConfigWrite(async () => {
+      await invoke("set_imported_parts_save_path", { path });
+      await refreshState();
+    });
+  });
+
+  $("btn-browse-imported-parts-save-path").addEventListener("click", async () => {
+    if (importedUi.loading || importedUi.busy) return;
+    importedUi.notice = null;
+    const current = ($("imported-parts-save-path-input") as HTMLInputElement).value;
+    const selected = await selectSaveFile(t("imported.exportDialog"), current);
+    if (selected) {
+      ($("imported-parts-save-path-input") as HTMLInputElement).value = selected;
+      await queueExportConfigWrite(async () => {
+        await invoke("set_imported_parts_save_path", { path: selected });
+        await refreshState();
+      });
+    }
+  });
+
+  $("btn-export-imported-parts").addEventListener("click", async () => {
+    await runImportedAction(async () => {
+      importedUi.notice = null;
+      renderImportedPanel();
+
+      try {
+        const path = ($("imported-parts-save-path-input") as HTMLInputElement).value;
+        await queueExportConfigWrite(async () => {
+          await invoke("set_imported_parts_save_path", { path });
+          await refreshState();
+        });
+        const result = await invoke<string>("save_imported_parts");
+        showImportedResult(result);
+      } catch (error) {
+        showImportedResult(errorMessage(error), "error");
+      }
+    });
+  });
+
+  $("btn-import-imported-parts").addEventListener("click", async () => {
+    await runImportedAction(async () => {
+      importedUi.notice = null;
+      renderImportedPanel();
+
+      try {
+        const path = ($("imported-parts-save-path-input") as HTMLInputElement).value;
+        await queueExportConfigWrite(async () => {
+          await invoke("set_imported_parts_save_path", { path });
+          await refreshState();
+        });
+        const result = await invoke<string>("import_imported_parts");
+        const kind: ExportMessageKind =
+          result.toLowerCase().includes("failed")
+            ? "error"
+            : result.startsWith("Imported 0 ") || result.startsWith("No ")
+              ? "warn"
+              : result.startsWith("Imported ")
+                ? "success"
+                : "warn";
+        showImportedResult(result, kind);
+        await refreshState();
+      } catch (error) {
+        showImportedResult(errorMessage(error), "error");
+      }
     });
   });
 
@@ -1106,6 +1403,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     const copyVal = target.getAttribute("data-copy");
     if (copyVal !== null) {
       await invoke("copy_to_clipboard", { text: copyVal });
+      return;
+    }
+
+    const importedCopy = target.getAttribute("data-copy-imported");
+    if (importedCopy !== null) {
+      await invoke("copy_to_clipboard", { text: importedCopy });
+      importedUi.notice = { kind: "success", message: t("imported.copied") };
+      renderImportedPanel();
       return;
     }
 

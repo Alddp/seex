@@ -6,11 +6,18 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
 
 use crate::app_paths::AppPaths;
 use crate::config::NlbnPathMode;
 use crate::extract::extract_by_keyword;
+
+pub type NotifyFn = Arc<dyn Fn() + Send + Sync + 'static>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct MatchedMergeStats {
+    pub added: usize,
+    pub already_present: usize,
+}
 
 pub struct MonitorState {
     pub last_content: String,
@@ -25,6 +32,8 @@ pub struct MonitorState {
     pub nlbn_show_terminal: bool,
     pub nlbn_parallel: usize,
     pub nlbn_path_mode: NlbnPathMode,
+    pub nlbn_overwrite: bool,
+    pub nlbn_symbol_fill_color: Option<String>,
     pub nlbn_running: bool,
     pub npnp_output_path: String,
     pub npnp_last_result: Option<String>,
@@ -38,6 +47,7 @@ pub struct MonitorState {
     pub npnp_force: bool,
     pub history_save_path: String,
     pub matched_save_path: String,
+    pub imported_parts_save_path: String,
     default_nlbn_output_path: String,
     default_npnp_output_path: String,
 }
@@ -59,6 +69,8 @@ impl MonitorState {
             nlbn_show_terminal: true,
             nlbn_parallel: 4,
             nlbn_path_mode: NlbnPathMode::Auto,
+            nlbn_overwrite: false,
+            nlbn_symbol_fill_color: None,
             nlbn_running: false,
             npnp_output_path: default_npnp_output_path.clone(),
             npnp_last_result: None,
@@ -72,6 +84,7 @@ impl MonitorState {
             npnp_force: false,
             history_save_path: paths.default_history_save_path_string(),
             matched_save_path: paths.default_matched_save_path_string(),
+            imported_parts_save_path: paths.default_imported_parts_save_path_string(),
             default_nlbn_output_path,
             default_npnp_output_path,
         }
@@ -109,9 +122,6 @@ impl MonitorState {
             let count = new_matches.len();
             for item in new_matches.into_iter().rev() {
                 self.matched.insert(0, item);
-            }
-            if self.matched.len() > 100 {
-                self.matched.truncate(100);
             }
             self.add_debug_log(format!("Rematch: found {} new results from history", count));
         }
@@ -154,9 +164,6 @@ impl MonitorState {
             if let Some(extracted) = extract_by_keyword(&trimmed, &self.keyword) {
                 if !self.matched.iter().any(|(_, id)| id == &extracted) {
                     self.matched.insert(0, (timestamp, extracted.clone()));
-                    if self.matched.len() > 100 {
-                        self.matched.pop();
-                    }
                     self.add_debug_log(format!("Matched: {}", extracted));
                 }
             } else {
@@ -185,6 +192,21 @@ impl MonitorState {
 
     pub fn set_nlbn_path_mode(&mut self, path_mode: NlbnPathMode) {
         self.nlbn_path_mode = path_mode;
+    }
+
+    pub fn set_nlbn_overwrite(&mut self, overwrite: bool) {
+        self.nlbn_overwrite = overwrite;
+    }
+
+    pub fn set_nlbn_symbol_fill_color(&mut self, color: Option<String>) {
+        self.nlbn_symbol_fill_color = color.and_then(|value| {
+            let trimmed = value.trim();
+            if trimmed.is_empty() {
+                None
+            } else {
+                Some(trimmed.to_string())
+            }
+        });
     }
 
     pub fn set_npnp_output_path(&mut self, path: String) {
@@ -242,6 +264,10 @@ impl MonitorState {
         self.matched_save_path = paths.resolve_matched_save_path(&path);
     }
 
+    pub fn set_imported_parts_save_path(&mut self, path: String, paths: &AppPaths) {
+        self.imported_parts_save_path = paths.resolve_imported_parts_save_path(&path);
+    }
+
     pub fn delete_history(&mut self, index: usize) {
         if index < self.history.len() {
             self.history.remove(index);
@@ -251,6 +277,33 @@ impl MonitorState {
     pub fn delete_matched(&mut self, index: usize) {
         if index < self.matched.len() {
             self.matched.remove(index);
+        }
+    }
+
+    pub fn merge_matched_ids<I>(&mut self, ids: I, timestamp: String) -> MatchedMergeStats
+    where
+        I: IntoIterator<Item = String>,
+    {
+        let mut seen: HashSet<String> = self.matched.iter().map(|(_, id)| id.clone()).collect();
+        let mut additions = Vec::new();
+        let mut already_present = 0usize;
+
+        for id in ids {
+            if seen.insert(id.clone()) {
+                additions.push((timestamp.clone(), id));
+            } else {
+                already_present += 1;
+            }
+        }
+
+        let added = additions.len();
+        for item in additions.into_iter().rev() {
+            self.matched.insert(0, item);
+        }
+
+        MatchedMergeStats {
+            added,
+            already_present,
         }
     }
 
@@ -266,7 +319,7 @@ impl MonitorState {
 
 struct Handler {
     state: Arc<Mutex<MonitorState>>,
-    app_handle: AppHandle,
+    notifier: NotifyFn,
 }
 
 impl ClipboardHandler for Handler {
@@ -288,7 +341,7 @@ impl ClipboardHandler for Handler {
                 }
             }
         }
-        let _ = self.app_handle.emit("clipboard-changed", ());
+        (self.notifier)();
         CallbackResult::Next
     }
 
@@ -308,7 +361,7 @@ pub struct MonitorHandle {
 }
 
 impl MonitorHandle {
-    pub fn spawn(state: Arc<Mutex<MonitorState>>, app_handle: AppHandle) -> Self {
+    pub fn spawn_with_callback(state: Arc<Mutex<MonitorState>>, notifier: NotifyFn) -> Self {
         if let Ok(mut s) = state.lock() {
             s.initialized = true;
         }
@@ -317,11 +370,11 @@ impl MonitorHandle {
 
         let (tx, rx) = mpsc::channel::<Shutdown>();
         let state_ev = Arc::clone(&state);
-        let app_ev = app_handle.clone();
+        let notify_ev = Arc::clone(&notifier);
         let event_thread = thread::spawn(move || {
             let handler = Handler {
                 state: state_ev,
-                app_handle: app_ev,
+                notifier: notify_ev,
             };
             let mut master = match Master::new(handler) {
                 Ok(m) => m,
@@ -337,7 +390,7 @@ impl MonitorHandle {
         let shutdown = rx.recv().ok();
 
         let state_poll = Arc::clone(&state);
-        let app_poll = app_handle.clone();
+        let notify_poll = Arc::clone(&notifier);
         let stop_poll = Arc::clone(&stop);
         let poll_thread = thread::spawn(move || {
             thread::sleep(Duration::from_millis(500));
@@ -359,7 +412,7 @@ impl MonitorHandle {
                                 false
                             };
                             if changed {
-                                let _ = app_poll.emit("clipboard-changed", ());
+                                (notify_poll)();
                             }
                         }
                         Err(_) => {
@@ -376,6 +429,10 @@ impl MonitorHandle {
             _event_thread: Some(event_thread),
             _poll_thread: Some(poll_thread),
         }
+    }
+
+    pub fn spawn(state: Arc<Mutex<MonitorState>>) -> Self {
+        Self::spawn_with_callback(state, Arc::new(|| {}))
     }
 }
 

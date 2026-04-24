@@ -561,6 +561,100 @@ button {
 .history-item .item-value { font-weight: 500; color: var(--text); }
 
 /* ================================================================== */
+/*  IMPORTED SYMBOLS                                                   */
+/* ================================================================== */
+
+.imported-toolbar {
+  justify-content: flex-end;
+}
+
+.imported-table {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  overflow: hidden;
+  background: var(--surface-hover);
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.imported-head,
+.imported-row {
+  display: grid;
+  grid-template-columns: minmax(120px, 0.9fr) minmax(0, 1.6fr) auto;
+  gap: 14px;
+  align-items: center;
+}
+
+.imported-head {
+  padding: 10px 12px;
+  background: var(--primary-lighter);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 13px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: .03em;
+}
+
+.imported-list {
+  max-height: none;
+  flex: 1;
+}
+
+.imported-row {
+  padding: 10px 12px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  transition: background .12s;
+}
+
+.imported-row:first-child {
+  border-top: none;
+}
+
+.imported-row:hover {
+  background: var(--primary-lighter);
+}
+
+.imported-cell {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.imported-part {
+  color: var(--primary);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.imported-symbol {
+  color: var(--text);
+  font-weight: 600;
+}
+
+.imported-actions {
+  justify-self: end;
+}
+
+.imported-actions button {
+  padding: 4px 10px;
+  font-size: 13px;
+  background: transparent;
+  color: var(--text-3);
+  border-radius: 4px;
+}
+
+.imported-actions button:hover {
+  background: var(--primary-light);
+  color: var(--primary);
+}
+
+/* ================================================================== */
 /*  MESSAGES                                                           */
 /* ================================================================== */
 

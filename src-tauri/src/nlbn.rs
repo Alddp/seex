@@ -6,7 +6,6 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{AppHandle, Emitter};
 
 #[cfg(target_os = "macos")]
 use std::os::unix::fs::PermissionsExt;
@@ -17,20 +16,29 @@ use crate::app_paths::AppPaths;
 use crate::config::NlbnPathMode;
 use crate::monitor::MonitorState;
 
+pub type NotifyFn = Arc<dyn Fn() + Send + Sync + 'static>;
+
 #[derive(Clone, Serialize)]
-struct ExportFinishedPayload {
-    tool: &'static str,
-    success: bool,
-    message: String,
+pub struct ExportFinishedPayload {
+    pub tool: &'static str,
+    pub success: bool,
+    pub message: String,
 }
 
 #[derive(Clone, Serialize)]
-struct ExportProgressPayload {
-    tool: &'static str,
-    message: String,
-    determinate: bool,
-    current: Option<usize>,
-    total: Option<usize>,
+pub struct ExportProgressPayload {
+    pub tool: &'static str,
+    pub message: String,
+    pub determinate: bool,
+    pub current: Option<usize>,
+    pub total: Option<usize>,
+}
+
+#[derive(Clone, Default)]
+pub struct ExportCallbacks {
+    pub on_progress: Option<Arc<dyn Fn(ExportProgressPayload) + Send + Sync + 'static>>,
+    pub on_finished: Option<Arc<dyn Fn(ExportFinishedPayload) + Send + Sync + 'static>>,
+    pub on_state_changed: Option<NotifyFn>,
 }
 
 pub struct ExportRequest {
@@ -39,40 +47,53 @@ pub struct ExportRequest {
     pub show_terminal: bool,
     pub parallel: usize,
     pub path_mode: NlbnPathMode,
+    pub overwrite: bool,
+    pub symbol_fill_color: Option<String>,
 }
 
 pub fn check_installation() -> Result<String, String> {
-    let executable = resolve_nlbn_executable()?;
-    let output = Command::new(&executable)
-        .arg("--version")
-        .output()
-        .map_err(|e| format!("nlbn found but version check failed: {}", e))?;
-
-    if output.status.success() {
-        Ok(String::from_utf8_lossy(&output.stdout).trim().to_string())
-    } else {
-        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        if stderr.is_empty() {
-            Err("nlbn found but version check failed".to_string())
-        } else {
-            Err(format!("nlbn found but version check failed: {}", stderr))
-        }
-    }
+    let installation = inspect_installation()?;
+    Ok(format!(
+        "{} ({})",
+        installation.version,
+        installation.executable.display()
+    ))
 }
 
 pub fn spawn_export(
     state: Arc<Mutex<MonitorState>>,
     req: ExportRequest,
-    app_handle: AppHandle,
     paths: AppPaths,
-) {
+    callbacks: ExportCallbacks,
+) -> Result<(), String> {
+    let installation = match inspect_installation() {
+        Ok(installation) => installation,
+        Err(message) => {
+            if let Ok(mut s) = state.lock() {
+                s.nlbn_running = false;
+                s.nlbn_last_result = Some(message.clone());
+                s.add_debug_log(message.clone());
+            }
+            notify_state_changed(&callbacks);
+            emit_finished(
+                &callbacks,
+                ExportFinishedPayload {
+                    tool: "nlbn",
+                    success: false,
+                    message: message.clone(),
+                },
+            );
+            return Err(message);
+        }
+    };
+
     if let Ok(mut s) = state.lock() {
         s.nlbn_running = true;
         s.nlbn_last_result = None;
     }
 
     emit_progress(
-        &app_handle,
+        &callbacks,
         "Preparing nlbn export...",
         false,
         None,
@@ -80,6 +101,7 @@ pub fn spawn_export(
     );
 
     thread::spawn(move || {
+        let executable = installation.executable;
         let temp_file = paths.cache_file("nlbn_ids", "txt");
 
         let write_result = (|| -> std::io::Result<()> {
@@ -100,7 +122,7 @@ pub fn spawn_export(
                 let unix_script = script_base.with_extension("command");
 
                 emit_progress(
-                    &app_handle,
+                    &callbacks,
                     if req.show_terminal {
                         "Launching nlbn terminal..."
                     } else {
@@ -113,20 +135,26 @@ pub fn spawn_export(
 
                 let result = if req.show_terminal {
                     run_in_terminal(
+                        &executable,
                         &temp_str,
                         &req.output_path,
                         req.parallel,
                         req.path_mode,
+                        req.overwrite,
+                        req.symbol_fill_color.as_deref(),
                         &work_dir,
                         &windows_script,
                         &unix_script,
                     )
                 } else {
                     run_in_background(
+                        &executable,
                         &temp_str,
                         &req.output_path,
                         req.parallel,
                         req.path_mode,
+                        req.overwrite,
+                        req.symbol_fill_color.as_deref(),
                         &work_dir,
                     )
                 };
@@ -169,9 +197,9 @@ pub fn spawn_export(
                     }
                 }
 
-                let _ = app_handle.emit("clipboard-changed", ());
+                notify_state_changed(&callbacks);
                 if let Some(payload) = notify_payload {
-                    let _ = app_handle.emit("export-finished", payload);
+                    emit_finished(&callbacks, payload);
                 }
 
                 if req.show_terminal {
@@ -185,7 +213,7 @@ pub fn spawn_export(
             }
             Err(e) => {
                 emit_progress(
-                    &app_handle,
+                    &callbacks,
                     "nlbn export failed before start",
                     false,
                     None,
@@ -201,9 +229,9 @@ pub fn spawn_export(
                     s.nlbn_last_result = Some(msg.clone());
                     s.add_debug_log(msg.clone());
                 }
-                let _ = app_handle.emit("clipboard-changed", ());
-                let _ = app_handle.emit(
-                    "export-finished",
+                notify_state_changed(&callbacks);
+                emit_finished(
+                    &callbacks,
                     ExportFinishedPayload {
                         tool: "nlbn",
                         success: false,
@@ -213,38 +241,133 @@ pub fn spawn_export(
             }
         }
     });
+
+    Ok(())
+}
+
+#[derive(Debug, Clone)]
+struct NlbnInstallation {
+    executable: PathBuf,
+    version: String,
+    capabilities: NlbnCapabilities,
+}
+
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+struct NlbnCapabilities {
+    overwrite: bool,
+    symbol_fill_color: bool,
+}
+
+fn inspect_installation() -> Result<NlbnInstallation, String> {
+    let executable = resolve_nlbn_executable()?;
+    let help = run_nlbn_text_command(&executable, "--help")
+        .map_err(|e| format!("nlbn help failed: {}", e))?;
+    let capabilities = parse_capabilities(&help);
+    let version = run_nlbn_text_command(&executable, "--version")
+        .unwrap_or_else(|_| "nlbn (version unavailable)".to_string());
+
+    let installation = NlbnInstallation {
+        executable,
+        version,
+        capabilities,
+    };
+    validate_installation(&installation)?;
+    Ok(installation)
+}
+
+fn validate_installation(installation: &NlbnInstallation) -> Result<(), String> {
+    if !installation.capabilities.symbol_fill_color {
+        return Err(format!(
+            "Installed nlbn is too old: {} at {}.\nseex now requires a newer nlbn with --symbol-fill-color support.\nPlease upgrade nlbn and retry.",
+            installation.version,
+            installation.executable.display()
+        ));
+    }
+
+    if !installation.capabilities.overwrite {
+        return Err(format!(
+            "Installed nlbn is incomplete: {} at {}.\nseex requires nlbn with --overwrite support.\nPlease upgrade nlbn and retry.",
+            installation.version,
+            installation.executable.display()
+        ));
+    }
+
+    Ok(())
+}
+
+fn run_nlbn_text_command(executable: &Path, arg: &str) -> Result<String, String> {
+    let output = Command::new(executable)
+        .arg(arg)
+        .output()
+        .map_err(|e| e.to_string())?;
+
+    if output.status.success() {
+        let stdout = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        if stdout.is_empty() {
+            Err(format!("{arg} returned no output"))
+        } else {
+            Ok(stdout)
+        }
+    } else {
+        let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+        if stderr.is_empty() {
+            Err(format!("{arg} exited with status {}", output.status))
+        } else {
+            Err(stderr)
+        }
+    }
+}
+
+fn parse_capabilities(help: &str) -> NlbnCapabilities {
+    NlbnCapabilities {
+        overwrite: help.contains("--overwrite"),
+        symbol_fill_color: help.contains("--symbol-fill-color"),
+    }
 }
 
 fn emit_progress(
-    app_handle: &AppHandle,
+    callbacks: &ExportCallbacks,
     message: impl Into<String>,
     determinate: bool,
     current: Option<usize>,
     total: Option<usize>,
 ) {
-    let _ = app_handle.emit(
-        "export-progress",
-        ExportProgressPayload {
+    if let Some(on_progress) = &callbacks.on_progress {
+        on_progress(ExportProgressPayload {
             tool: "nlbn",
             message: message.into(),
             determinate,
             current,
             total,
-        },
-    );
+        });
+    }
+}
+
+fn emit_finished(callbacks: &ExportCallbacks, payload: ExportFinishedPayload) {
+    if let Some(on_finished) = &callbacks.on_finished {
+        on_finished(payload);
+    }
+}
+
+fn notify_state_changed(callbacks: &ExportCallbacks) {
+    if let Some(on_state_changed) = &callbacks.on_state_changed {
+        on_state_changed();
+    }
 }
 
 fn run_in_terminal(
+    executable: &Path,
     temp_path: &str,
     output_path: &str,
     parallel: usize,
     path_mode: NlbnPathMode,
+    overwrite: bool,
+    symbol_fill_color: Option<&str>,
     work_dir: &Path,
     #[cfg(target_os = "windows")] windows_script_path: &Path,
     #[cfg(not(target_os = "windows"))] _windows_script_path: &Path,
     unix_script_path: &Path,
 ) -> Result<String, String> {
-    let executable = resolve_nlbn_executable()?;
     let resolved_output_path = expand_user_path(output_path);
     let use_project_relative = resolve_project_relative_mode(path_mode, &resolved_output_path);
 
@@ -255,14 +378,20 @@ fn run_in_terminal(
         } else {
             ""
         };
+        let overwrite_arg = if overwrite { " --overwrite" } else { "" };
+        let symbol_fill_color_arg = normalized_symbol_fill_color_arg(symbol_fill_color)
+            .map(|value| format!(" --symbol-fill-color \"{}\"", value))
+            .unwrap_or_default();
         let bat_content = format!(
-            "@echo on\r\ncd /D \"{}\"\r\n\"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}\r\necho.\r\necho === Done ===\r\npause\r\n",
+            "@echo on\r\ncd /D \"{}\"\r\n\"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}{}{}\r\necho.\r\necho === Done ===\r\npause\r\n",
             work_dir.display(),
             executable.display(),
             temp_path,
             resolved_output_path.display(),
             parallel,
             project_relative_arg,
+            overwrite_arg,
+            symbol_fill_color_arg,
         );
         fs::write(windows_script_path, &bat_content)
             .map_err(|e| format!("Failed to write batch file: {}", e))?;
@@ -290,15 +419,21 @@ fn run_in_terminal(
         } else {
             ""
         };
+        let overwrite_arg = if overwrite { " --overwrite" } else { "" };
+        let symbol_fill_color_arg = normalized_symbol_fill_color_arg(symbol_fill_color)
+            .map(|value| format!(" --symbol-fill-color {}", shell_quote(value)))
+            .unwrap_or_default();
         let script_path = unix_script_path.display().to_string();
         let script_content = format!(
-            "#!/bin/zsh\ncd {}\n{} --full --batch {} -o {} --parallel {}{}\necho\necho '=== Done ==='\necho 'Press Enter to exit'\nread\n",
+            "#!/bin/zsh\ncd {}\n{} --full --batch {} -o {} --parallel {}{}{}{}\necho\necho '=== Done ==='\necho 'Press Enter to exit'\nread\n",
             shell_quote(&work_dir.display().to_string()),
             shell_quote(&executable.display().to_string()),
             shell_quote(temp_path),
             shell_quote(&resolved_output_path.display().to_string()),
             parallel,
             project_relative_arg,
+            overwrite_arg,
+            symbol_fill_color_arg,
         );
 
         fs::write(unix_script_path, script_content)
@@ -331,14 +466,20 @@ fn run_in_terminal(
         } else {
             ""
         };
+        let overwrite_arg = if overwrite { " --overwrite" } else { "" };
+        let symbol_fill_color_arg = normalized_symbol_fill_color_arg(symbol_fill_color)
+            .map(|value| format!(" --symbol-fill-color \"{}\"", value))
+            .unwrap_or_default();
         let script = format!(
-            "cd \"{}\" && \"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}; echo Press Enter to exit; read",
+            "cd \"{}\" && \"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}{}{}; echo Press Enter to exit; read",
             work_dir.display(),
             executable.display(),
             temp_path,
             resolved_output_path.display(),
             parallel,
             project_relative_arg,
+            overwrite_arg,
+            symbol_fill_color_arg,
         );
         Command::new("gnome-terminal")
             .args(["--", "bash", "-c", &script])
@@ -354,13 +495,15 @@ fn run_in_terminal(
 }
 
 fn run_in_background(
+    executable: &Path,
     temp_path: &str,
     output_path: &str,
     parallel: usize,
     path_mode: NlbnPathMode,
+    overwrite: bool,
+    symbol_fill_color: Option<&str>,
     work_dir: &Path,
 ) -> Result<String, String> {
-    let executable = resolve_nlbn_executable()?;
     let resolved_output_path = expand_user_path(output_path);
     let parallel_str = parallel.to_string();
     let resolved_output_str = resolved_output_path.display().to_string();
@@ -388,6 +531,12 @@ fn run_in_background(
         if use_project_relative {
             command.arg("--project-relative");
         }
+        if overwrite {
+            command.arg("--overwrite");
+        }
+        if let Some(color) = normalized_symbol_fill_color_arg(symbol_fill_color) {
+            command.args(["--symbol-fill-color", color]);
+        }
         command.output()
     };
 
@@ -407,6 +556,12 @@ fn run_in_background(
             .current_dir(work_dir);
         if use_project_relative {
             command.arg("--project-relative");
+        }
+        if overwrite {
+            command.arg("--overwrite");
+        }
+        if let Some(color) = normalized_symbol_fill_color_arg(symbol_fill_color) {
+            command.args(["--symbol-fill-color", color]);
         }
         command.output()
     };
@@ -439,8 +594,12 @@ fn resolve_nlbn_executable() -> Result<PathBuf, String> {
 
     #[cfg(not(target_os = "windows"))]
     {
-        if command_available("nlbn") {
-            return Ok(PathBuf::from("nlbn"));
+        if let Some(path) = find_with_shell("command -v nlbn") {
+            return Ok(path);
+        }
+
+        if let Some(path) = find_in_path("nlbn") {
+            return Ok(path);
         }
 
         for candidate in unix_nlbn_candidates() {
@@ -449,27 +608,17 @@ fn resolve_nlbn_executable() -> Result<PathBuf, String> {
             }
         }
 
-        #[cfg(target_os = "macos")]
-        if let Some(path) = find_with_shell("command -v nlbn") {
-            return Ok(path);
-        }
-
-        #[cfg(not(target_os = "macos"))]
-        if let Some(path) = find_with_shell("command -v nlbn") {
-            return Ok(path);
-        }
-
         Err("nlbn not found".to_string())
     }
 }
 
 #[cfg(not(target_os = "windows"))]
-fn command_available(program: &str) -> bool {
-    Command::new(program)
-        .arg("--version")
-        .output()
-        .map(|output| output.status.success())
-        .unwrap_or(false)
+fn find_in_path(program: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+
+    std::env::split_paths(&path)
+        .map(|dir| dir.join(program))
+        .find(|candidate| candidate.is_file())
 }
 
 #[cfg(not(target_os = "windows"))]
@@ -565,7 +714,53 @@ fn resolve_project_relative_mode(path_mode: NlbnPathMode, output_path: &Path) ->
     }
 }
 
+fn normalized_symbol_fill_color_arg(symbol_fill_color: Option<&str>) -> Option<&str> {
+    symbol_fill_color
+        .map(str::trim)
+        .filter(|value| !value.is_empty())
+}
+
 #[cfg(target_os = "macos")]
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{NlbnCapabilities, NlbnInstallation, parse_capabilities, validate_installation};
+    use std::path::PathBuf;
+
+    #[test]
+    fn detects_required_capabilities_from_help_output() {
+        let caps = parse_capabilities(
+            "\
+Options:\n\
+      --overwrite            Overwrite existing components\n\
+      --symbol-fill-color    Override filled symbol rectangle color\n",
+        );
+
+        assert_eq!(
+            caps,
+            NlbnCapabilities {
+                overwrite: true,
+                symbol_fill_color: true,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_old_nlbn_without_symbol_fill_color_support() {
+        let installation = NlbnInstallation {
+            executable: PathBuf::from("/opt/nlbn"),
+            version: "nlbn 1.0.25".to_string(),
+            capabilities: NlbnCapabilities {
+                overwrite: true,
+                symbol_fill_color: false,
+            },
+        };
+
+        let err = validate_installation(&installation).expect_err("should reject old nlbn");
+        assert!(err.contains("too old"));
+        assert!(err.contains("--symbol-fill-color"));
+    }
 }

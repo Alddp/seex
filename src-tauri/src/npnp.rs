@@ -5,7 +5,7 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use tauri::{AppHandle, Emitter};
+use std::thread;
 
 use crate::app_paths::AppPaths;
 use crate::monitor::MonitorState;
@@ -13,20 +13,29 @@ use crate::monitor::MonitorState;
 const DEFAULT_LIBRARY_NAME: &str = "SeExMerged";
 const DEFAULT_OUTPUT_DIR: &str = "npnp_export";
 
+pub type NotifyFn = Arc<dyn Fn() + Send + Sync + 'static>;
+
 #[derive(Clone, Serialize)]
-struct ExportFinishedPayload {
-    tool: &'static str,
-    success: bool,
-    message: String,
+pub struct ExportFinishedPayload {
+    pub tool: &'static str,
+    pub success: bool,
+    pub message: String,
 }
 
 #[derive(Clone, Serialize)]
-struct ExportProgressPayload {
-    tool: &'static str,
-    message: String,
-    determinate: bool,
-    current: Option<usize>,
-    total: Option<usize>,
+pub struct ExportProgressPayload {
+    pub tool: &'static str,
+    pub message: String,
+    pub determinate: bool,
+    pub current: Option<usize>,
+    pub total: Option<usize>,
+}
+
+#[derive(Clone, Default)]
+pub struct ExportCallbacks {
+    pub on_progress: Option<Arc<dyn Fn(ExportProgressPayload) + Send + Sync + 'static>>,
+    pub on_finished: Option<Arc<dyn Fn(ExportFinishedPayload) + Send + Sync + 'static>>,
+    pub on_state_changed: Option<NotifyFn>,
 }
 
 pub struct ExportRequest {
@@ -44,8 +53,8 @@ pub struct ExportRequest {
 pub fn spawn_export(
     state: Arc<Mutex<MonitorState>>,
     req: ExportRequest,
-    app_handle: AppHandle,
     paths: AppPaths,
+    callbacks: ExportCallbacks,
 ) {
     if let Ok(mut s) = state.lock() {
         s.npnp_running = true;
@@ -53,31 +62,37 @@ pub fn spawn_export(
     }
 
     emit_progress(
-        &app_handle,
+        &callbacks,
         "Preparing npnp export...",
         false,
         None,
         Some(req.ids.len()),
     );
 
-    tauri::async_runtime::spawn(async move {
+    thread::spawn(move || {
         let input_path = paths.cache_file("seex_npnp_ids", "txt");
-        let result: Result<String, String> = async {
+        let result: Result<String, String> = (|| -> Result<String, String> {
             write_ids_file(&input_path, &req.ids)?;
             let client = LcedaClient::new();
             emit_progress(
-                &app_handle,
+                &callbacks,
                 running_message(&req),
                 false,
                 None,
                 Some(req.ids.len()),
             );
-            let summary = export_batch(&client, build_batch_options(&req, &input_path))
-                .await
+            let runtime = tokio::runtime::Builder::new_current_thread()
+                .enable_all()
+                .build()
+                .map_err(|e| e.to_string())?;
+            let summary = runtime
+                .block_on(export_batch(
+                    &client,
+                    build_batch_options(&req, &input_path),
+                ))
                 .map_err(|e| e.to_string())?;
             Ok(format_summary(&req, &summary))
-        }
-        .await;
+        })();
 
         let _ = fs::remove_file(&input_path);
 
@@ -92,9 +107,9 @@ pub fn spawn_export(
             s.add_debug_log(message.clone());
         }
 
-        let _ = app_handle.emit("clipboard-changed", ());
-        let _ = app_handle.emit(
-            "export-finished",
+        notify_state_changed(&callbacks);
+        emit_finished(
+            &callbacks,
             ExportFinishedPayload {
                 tool: "npnp",
                 success,
@@ -105,22 +120,33 @@ pub fn spawn_export(
 }
 
 fn emit_progress(
-    app_handle: &AppHandle,
+    callbacks: &ExportCallbacks,
     message: impl Into<String>,
     determinate: bool,
     current: Option<usize>,
     total: Option<usize>,
 ) {
-    let _ = app_handle.emit(
-        "export-progress",
-        ExportProgressPayload {
+    if let Some(on_progress) = &callbacks.on_progress {
+        on_progress(ExportProgressPayload {
             tool: "npnp",
             message: message.into(),
             determinate,
             current,
             total,
-        },
-    );
+        });
+    }
+}
+
+fn emit_finished(callbacks: &ExportCallbacks, payload: ExportFinishedPayload) {
+    if let Some(on_finished) = &callbacks.on_finished {
+        on_finished(payload);
+    }
+}
+
+fn notify_state_changed(callbacks: &ExportCallbacks) {
+    if let Some(on_state_changed) = &callbacks.on_state_changed {
+        on_state_changed();
+    }
 }
 
 fn running_message(req: &ExportRequest) -> String {

@@ -48,8 +48,15 @@ mod tests {
 
         fs::write(
             legacy_dir.join("export_config.json"),
-            r#"{
-  "nlbn": { "output_path": "/tmp/nlbn", "show_terminal": false, "parallel": 8, "path_mode": "project_relative" },
+            r##"{
+  "nlbn": {
+    "output_path": "/tmp/nlbn",
+    "show_terminal": false,
+    "parallel": 8,
+    "path_mode": "project_relative",
+    "overwrite": true,
+    "symbol_fill_color": "#005C8FCC"
+  },
   "syft": {
     "output_path": "/tmp/npnp",
     "mode": "pcblib",
@@ -62,9 +69,10 @@ mod tests {
   },
   "monitor": {
     "history_save_path": "/tmp/history.txt",
-    "matched_save_path": "/tmp/matched.txt"
+    "matched_save_path": "/tmp/matched.txt",
+    "imported_parts_save_path": "/tmp/imported-parts.txt"
   }
-}"#,
+}"##,
         )
         .unwrap();
 
@@ -72,10 +80,35 @@ mod tests {
         assert_eq!(config.nlbn.output_path, "/tmp/nlbn");
         assert!(!config.nlbn.show_terminal);
         assert_eq!(config.nlbn.parallel, 8);
+        assert!(config.nlbn.overwrite);
+        assert_eq!(config.nlbn.symbol_fill_color.as_deref(), Some("#005C8FCC"));
         assert_eq!(config.npnp.output_path, "/tmp/npnp");
         assert_eq!(config.npnp.mode, "pcblib");
         assert!(config.npnp.merge);
         assert_eq!(config.monitor.history_save_path, "/tmp/history.txt");
+        assert_eq!(
+            config.monitor.imported_parts_save_path,
+            "/tmp/imported-parts.txt"
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn save_omits_unset_symbol_fill_color() {
+        let root = test_root("save_without_fill_color");
+        let paths = AppPaths::for_test(
+            root.join("config"),
+            root.join("data"),
+            root.join("cache"),
+            None,
+        );
+
+        AppConfig::default().save(&paths);
+
+        let saved = fs::read_to_string(paths.config_file()).unwrap();
+        assert!(!saved.contains("symbol_fill_color"));
+        assert!(saved.contains("\"imported_parts_save_path\""));
 
         let _ = fs::remove_dir_all(root);
     }
@@ -105,6 +138,7 @@ impl Default for AppConfig {
 pub struct MonitorConfig {
     pub history_save_path: String,
     pub matched_save_path: String,
+    pub imported_parts_save_path: String,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -114,6 +148,9 @@ pub struct NlbnConfig {
     pub show_terminal: bool,
     pub parallel: usize,
     pub path_mode: NlbnPathMode,
+    pub overwrite: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub symbol_fill_color: Option<String>,
 }
 
 impl Default for NlbnConfig {
@@ -123,6 +160,8 @@ impl Default for NlbnConfig {
             show_terminal: true,
             parallel: 4,
             path_mode: NlbnPathMode::Auto,
+            overwrite: false,
+            symbol_fill_color: None,
         }
     }
 }
@@ -230,6 +269,8 @@ impl NlbnConfig {
             show_terminal,
             parallel,
             path_mode: defaults.path_mode,
+            overwrite: defaults.overwrite,
+            symbol_fill_color: defaults.symbol_fill_color,
         }
     }
 }
