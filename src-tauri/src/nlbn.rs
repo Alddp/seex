@@ -47,7 +47,12 @@ pub struct ExportRequest {
     pub show_terminal: bool,
     pub parallel: usize,
     pub path_mode: NlbnPathMode,
-    pub overwrite: bool,
+    pub export_symbol: bool,
+    pub export_footprint: bool,
+    pub export_model_3d: bool,
+    pub overwrite_symbol: bool,
+    pub overwrite_footprint: bool,
+    pub overwrite_model_3d: bool,
     pub symbol_fill_color: Option<String>,
 }
 
@@ -140,7 +145,7 @@ pub fn spawn_export(
                         &req.output_path,
                         req.parallel,
                         req.path_mode,
-                        req.overwrite,
+                        &req,
                         req.symbol_fill_color.as_deref(),
                         &work_dir,
                         &windows_script,
@@ -153,7 +158,7 @@ pub fn spawn_export(
                         &req.output_path,
                         req.parallel,
                         req.path_mode,
-                        req.overwrite,
+                        &req,
                         req.symbol_fill_color.as_deref(),
                         &work_dir,
                     )
@@ -252,7 +257,12 @@ struct NlbnInstallation {
 
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 struct NlbnCapabilities {
-    overwrite: bool,
+    symbol: bool,
+    footprint: bool,
+    model_3d: bool,
+    overwrite_symbol: bool,
+    overwrite_footprint: bool,
+    overwrite_model_3d: bool,
     symbol_fill_color: bool,
 }
 
@@ -274,17 +284,11 @@ fn inspect_installation() -> Result<NlbnInstallation, String> {
 }
 
 fn validate_installation(installation: &NlbnInstallation) -> Result<(), String> {
-    if !installation.capabilities.symbol_fill_color {
+    if !installation.capabilities.supports_granular_export_and_overwrite()
+        || !installation.capabilities.symbol_fill_color
+    {
         return Err(format!(
-            "Installed nlbn is too old: {} at {}.\nseex now requires a newer nlbn with --symbol-fill-color support.\nPlease upgrade nlbn and retry.",
-            installation.version,
-            installation.executable.display()
-        ));
-    }
-
-    if !installation.capabilities.overwrite {
-        return Err(format!(
-            "Installed nlbn is incomplete: {} at {}.\nseex requires nlbn with --overwrite support.\nPlease upgrade nlbn and retry.",
+            "Installed nlbn is too old: {} at {}.\nseex now requires a newer nlbn with granular --symbol/--footprint/--3d export flags, granular overwrite flags, and --symbol-fill-color support.\nPlease upgrade nlbn and retry.",
             installation.version,
             installation.executable.display()
         ));
@@ -318,9 +322,30 @@ fn run_nlbn_text_command(executable: &Path, arg: &str) -> Result<String, String>
 
 fn parse_capabilities(help: &str) -> NlbnCapabilities {
     NlbnCapabilities {
-        overwrite: help.contains("--overwrite"),
-        symbol_fill_color: help.contains("--symbol-fill-color"),
+        symbol: help_flag_exists(help, "--symbol"),
+        footprint: help_flag_exists(help, "--footprint"),
+        model_3d: help_flag_exists(help, "--3d"),
+        overwrite_symbol: help_flag_exists(help, "--overwrite-symbol"),
+        overwrite_footprint: help_flag_exists(help, "--overwrite-footprint"),
+        overwrite_model_3d: help_flag_exists(help, "--overwrite-3d"),
+        symbol_fill_color: help_flag_exists(help, "--symbol-fill-color"),
     }
+}
+
+impl NlbnCapabilities {
+    fn supports_granular_export_and_overwrite(self) -> bool {
+        self.symbol
+            && self.footprint
+            && self.model_3d
+            && self.overwrite_symbol
+            && self.overwrite_footprint
+            && self.overwrite_model_3d
+    }
+}
+
+fn help_flag_exists(help: &str, flag: &str) -> bool {
+    help.lines()
+        .any(|line| line.split_whitespace().any(|token| token == flag))
 }
 
 fn emit_progress(
@@ -359,7 +384,7 @@ fn run_in_terminal(
     output_path: &str,
     parallel: usize,
     path_mode: NlbnPathMode,
-    overwrite: bool,
+    request: &ExportRequest,
     symbol_fill_color: Option<&str>,
     work_dir: &Path,
     #[cfg(target_os = "windows")] windows_script_path: &Path,
@@ -368,28 +393,26 @@ fn run_in_terminal(
 ) -> Result<String, String> {
     let resolved_output_path = expand_user_path(output_path);
     let use_project_relative = resolve_project_relative_mode(path_mode, &resolved_output_path);
+    let args = build_nlbn_args(
+        temp_path,
+        &resolved_output_path,
+        parallel,
+        use_project_relative,
+        request,
+        symbol_fill_color,
+    );
 
     #[cfg(target_os = "windows")]
     {
-        let project_relative_arg = if use_project_relative {
-            " --project-relative"
-        } else {
-            ""
-        };
-        let overwrite_arg = if overwrite { " --overwrite" } else { "" };
-        let symbol_fill_color_arg = normalized_symbol_fill_color_arg(symbol_fill_color)
-            .map(|value| format!(" --symbol-fill-color \"{}\"", value))
-            .unwrap_or_default();
-        let bat_content = format!(
-            "@echo on\r\ncd /D \"{}\"\r\n\"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}{}{}\r\necho.\r\necho === Done ===\r\npause\r\n",
-            work_dir.display(),
+        let command_line = format!(
+            "\"{}\" {}",
             executable.display(),
-            temp_path,
-            resolved_output_path.display(),
-            parallel,
-            project_relative_arg,
-            overwrite_arg,
-            symbol_fill_color_arg,
+            windows_join_args(&args)
+        );
+        let bat_content = format!(
+            "@echo on\r\ncd /D \"{}\"\r\n{}\r\necho.\r\necho === Done ===\r\npause\r\n",
+            work_dir.display(),
+            command_line,
         );
         fs::write(windows_script_path, &bat_content)
             .map_err(|e| format!("Failed to write batch file: {}", e))?;
@@ -412,26 +435,16 @@ fn run_in_terminal(
 
     #[cfg(target_os = "macos")]
     {
-        let project_relative_arg = if use_project_relative {
-            " --project-relative"
-        } else {
-            ""
-        };
-        let overwrite_arg = if overwrite { " --overwrite" } else { "" };
-        let symbol_fill_color_arg = normalized_symbol_fill_color_arg(symbol_fill_color)
-            .map(|value| format!(" --symbol-fill-color {}", shell_quote(value)))
-            .unwrap_or_default();
         let script_path = unix_script_path.display().to_string();
-        let script_content = format!(
-            "#!/bin/zsh\ncd {}\n{} --full --batch {} -o {} --parallel {}{}{}{}\necho\necho '=== Done ==='\necho 'Press Enter to exit'\nread\n",
-            shell_quote(&work_dir.display().to_string()),
+        let command_line = format!(
+            "{} {}",
             shell_quote(&executable.display().to_string()),
-            shell_quote(temp_path),
-            shell_quote(&resolved_output_path.display().to_string()),
-            parallel,
-            project_relative_arg,
-            overwrite_arg,
-            symbol_fill_color_arg,
+            shell_join_args(&args)
+        );
+        let script_content = format!(
+            "#!/bin/zsh\ncd {}\n{}\necho\necho '=== Done ==='\necho 'Press Enter to exit'\nread\n",
+            shell_quote(&work_dir.display().to_string()),
+            command_line,
         );
 
         fs::write(unix_script_path, script_content)
@@ -459,25 +472,11 @@ fn run_in_terminal(
     #[cfg(not(target_os = "windows"))]
     #[cfg(not(target_os = "macos"))]
     {
-        let project_relative_arg = if use_project_relative {
-            " --project-relative"
-        } else {
-            ""
-        };
-        let overwrite_arg = if overwrite { " --overwrite" } else { "" };
-        let symbol_fill_color_arg = normalized_symbol_fill_color_arg(symbol_fill_color)
-            .map(|value| format!(" --symbol-fill-color \"{}\"", value))
-            .unwrap_or_default();
         let script = format!(
-            "cd \"{}\" && \"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}{}{}; echo Press Enter to exit; read",
-            work_dir.display(),
-            executable.display(),
-            temp_path,
-            resolved_output_path.display(),
-            parallel,
-            project_relative_arg,
-            overwrite_arg,
-            symbol_fill_color_arg,
+            "cd {} && {} {}; echo Press Enter to exit; read",
+            shell_quote(&work_dir.display().to_string()),
+            shell_quote(&executable.display().to_string()),
+            shell_join_args(&args),
         );
         Command::new("gnome-terminal")
             .args(["--", "bash", "-c", &script])
@@ -498,69 +497,32 @@ fn run_in_background(
     output_path: &str,
     parallel: usize,
     path_mode: NlbnPathMode,
-    overwrite: bool,
+    request: &ExportRequest,
     symbol_fill_color: Option<&str>,
     work_dir: &Path,
 ) -> Result<String, String> {
     let resolved_output_path = expand_user_path(output_path);
-    let parallel_str = parallel.to_string();
-    let resolved_output_str = resolved_output_path.display().to_string();
     let use_project_relative = resolve_project_relative_mode(path_mode, &resolved_output_path);
-
-    #[cfg(target_os = "windows")]
-    let executable_str = executable.display().to_string();
+    let args = build_nlbn_args(
+        temp_path,
+        &resolved_output_path,
+        parallel,
+        use_project_relative,
+        request,
+        symbol_fill_color,
+    );
 
     #[cfg(target_os = "windows")]
     let result = {
-        let mut command = Command::new("cmd");
-        command
-            .args([
-                "/C",
-                &executable_str,
-                "--full",
-                "--batch",
-                temp_path,
-                "-o",
-                &resolved_output_str,
-                "--parallel",
-                &parallel_str,
-            ])
-            .current_dir(work_dir);
-        if use_project_relative {
-            command.arg("--project-relative");
-        }
-        if overwrite {
-            command.arg("--overwrite");
-        }
-        if let Some(color) = normalized_symbol_fill_color_arg(symbol_fill_color) {
-            command.args(["--symbol-fill-color", color]);
-        }
+        let mut command = Command::new(executable);
+        command.args(&args).current_dir(work_dir);
         command.output()
     };
 
     #[cfg(not(target_os = "windows"))]
     let result = {
         let mut command = Command::new(&executable);
-        command
-            .args([
-                "--full",
-                "--batch",
-                temp_path,
-                "-o",
-                &resolved_output_str,
-                "--parallel",
-                &parallel_str,
-            ])
-            .current_dir(work_dir);
-        if use_project_relative {
-            command.arg("--project-relative");
-        }
-        if overwrite {
-            command.arg("--overwrite");
-        }
-        if let Some(color) = normalized_symbol_fill_color_arg(symbol_fill_color) {
-            command.args(["--symbol-fill-color", color]);
-        }
+        command.args(&args).current_dir(work_dir);
         command.output()
     };
 
@@ -718,14 +680,104 @@ fn normalized_symbol_fill_color_arg(symbol_fill_color: Option<&str>) -> Option<&
         .filter(|value| !value.is_empty())
 }
 
+fn build_nlbn_args(
+    temp_path: &str,
+    output_path: &Path,
+    parallel: usize,
+    use_project_relative: bool,
+    request: &ExportRequest,
+    symbol_fill_color: Option<&str>,
+) -> Vec<String> {
+    let mut args = Vec::new();
+    let export_all =
+        request.export_symbol && request.export_footprint && request.export_model_3d;
+
+    if export_all {
+        args.push("--full".to_string());
+    } else {
+        if request.export_symbol {
+            args.push("--symbol".to_string());
+        }
+        if request.export_footprint {
+            args.push("--footprint".to_string());
+        }
+        if request.export_model_3d {
+            args.push("--3d".to_string());
+        }
+    }
+
+    args.push("--batch".to_string());
+    args.push(temp_path.to_string());
+    args.push("-o".to_string());
+    args.push(output_path.display().to_string());
+    args.push("--parallel".to_string());
+    args.push(parallel.to_string());
+
+    if use_project_relative {
+        args.push("--project-relative".to_string());
+    }
+
+    let overwrite_all = export_all
+        && request.overwrite_symbol
+        && request.overwrite_footprint
+        && request.overwrite_model_3d;
+    if overwrite_all {
+        args.push("--overwrite".to_string());
+    } else {
+        if request.export_symbol && request.overwrite_symbol {
+            args.push("--overwrite-symbol".to_string());
+        }
+        if request.export_footprint && request.overwrite_footprint {
+            args.push("--overwrite-footprint".to_string());
+        }
+        if request.export_model_3d && request.overwrite_model_3d {
+            args.push("--overwrite-3d".to_string());
+        }
+    }
+
+    if request.export_symbol
+        && let Some(color) = normalized_symbol_fill_color_arg(symbol_fill_color)
+    {
+        args.push("--symbol-fill-color".to_string());
+        args.push(color.to_string());
+    }
+
+    args
+}
+
 #[cfg(target_os = "macos")]
 fn shell_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "'\\''"))
 }
 
+#[cfg(not(target_os = "windows"))]
+fn shell_join_args(args: &[String]) -> String {
+    args.iter()
+        .map(|value| shell_quote(value))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
+#[cfg(target_os = "windows")]
+fn windows_quote(value: &str) -> String {
+    format!("\"{}\"", value.replace('"', "\\\""))
+}
+
+#[cfg(target_os = "windows")]
+fn windows_join_args(args: &[String]) -> String {
+    args.iter()
+        .map(|value| windows_quote(value))
+        .collect::<Vec<_>>()
+        .join(" ")
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{NlbnCapabilities, NlbnInstallation, parse_capabilities, validate_installation};
+    use super::{
+        ExportRequest, NlbnCapabilities, NlbnInstallation, build_nlbn_args, parse_capabilities,
+        validate_installation,
+    };
+    use crate::config::NlbnPathMode;
     use std::path::PathBuf;
 
     #[test]
@@ -733,14 +785,24 @@ mod tests {
         let caps = parse_capabilities(
             "\
 Options:\n\
-      --overwrite            Overwrite existing components\n\
+      --symbol               Convert symbol only\n\
+      --footprint            Convert footprint only\n\
+      --3d                   Convert 3D model only\n\
+      --overwrite-symbol     Overwrite symbol output only\n\
+      --overwrite-footprint  Overwrite footprint output only\n\
+      --overwrite-3d         Overwrite 3D model output only\n\
       --symbol-fill-color    Override filled symbol rectangle color\n",
         );
 
         assert_eq!(
             caps,
             NlbnCapabilities {
-                overwrite: true,
+                symbol: true,
+                footprint: true,
+                model_3d: true,
+                overwrite_symbol: true,
+                overwrite_footprint: true,
+                overwrite_model_3d: true,
                 symbol_fill_color: true,
             }
         );
@@ -752,7 +814,12 @@ Options:\n\
             executable: PathBuf::from("/opt/nlbn"),
             version: "nlbn 1.0.25".to_string(),
             capabilities: NlbnCapabilities {
-                overwrite: true,
+                symbol: true,
+                footprint: true,
+                model_3d: true,
+                overwrite_symbol: true,
+                overwrite_footprint: true,
+                overwrite_model_3d: true,
                 symbol_fill_color: false,
             },
         };
@@ -760,5 +827,38 @@ Options:\n\
         let err = validate_installation(&installation).expect_err("should reject old nlbn");
         assert!(err.contains("too old"));
         assert!(err.contains("--symbol-fill-color"));
+    }
+
+    #[test]
+    fn build_args_uses_granular_export_and_overwrite_flags() {
+        let args = build_nlbn_args(
+            "/tmp/ids.txt",
+            &PathBuf::from("/tmp/out"),
+            4,
+            true,
+            &ExportRequest {
+                ids: vec!["C1".to_string()],
+                output_path: "/tmp/out".to_string(),
+                show_terminal: false,
+                parallel: 4,
+                path_mode: NlbnPathMode::ProjectRelative,
+                export_symbol: true,
+                export_footprint: false,
+                export_model_3d: true,
+                overwrite_symbol: true,
+                overwrite_footprint: false,
+                overwrite_model_3d: false,
+                symbol_fill_color: Some("#005C8FCC".to_string()),
+            },
+            Some("#005C8FCC"),
+        );
+
+        assert!(args.contains(&"--symbol".to_string()));
+        assert!(args.contains(&"--3d".to_string()));
+        assert!(!args.contains(&"--footprint".to_string()));
+        assert!(args.contains(&"--overwrite-symbol".to_string()));
+        assert!(!args.contains(&"--overwrite".to_string()));
+        assert!(args.contains(&"--project-relative".to_string()));
+        assert!(args.contains(&"--symbol-fill-color".to_string()));
     }
 }

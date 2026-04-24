@@ -260,13 +260,21 @@ impl AppController {
             if ids.is_empty() {
                 return "No matched results to export".to_string();
             }
+            if !m.nlbn_has_export_targets() {
+                return "Select at least one nlbn export type".to_string();
+            }
             nlbn::ExportRequest {
                 ids,
                 output_path: m.nlbn_output_path.clone(),
                 show_terminal: m.nlbn_show_terminal,
                 parallel: m.nlbn_parallel,
                 path_mode: m.nlbn_path_mode,
-                overwrite: m.nlbn_overwrite,
+                export_symbol: m.nlbn_export_symbol,
+                export_footprint: m.nlbn_export_footprint,
+                export_model_3d: m.nlbn_export_model_3d,
+                overwrite_symbol: m.nlbn_overwrite_symbol,
+                overwrite_footprint: m.nlbn_overwrite_footprint,
+                overwrite_model_3d: m.nlbn_overwrite_model_3d,
                 symbol_fill_color: m.nlbn_symbol_fill_color.clone(),
             }
         } else {
@@ -322,8 +330,14 @@ pub fn snapshot_config(state: &MonitorState) -> AppConfig {
             show_terminal: state.nlbn_show_terminal,
             parallel: state.nlbn_parallel,
             path_mode: state.nlbn_path_mode,
-            overwrite: state.nlbn_overwrite,
+            export_symbol: state.nlbn_export_symbol,
+            export_footprint: state.nlbn_export_footprint,
+            export_model_3d: state.nlbn_export_model_3d,
+            overwrite_symbol: state.nlbn_overwrite_symbol,
+            overwrite_footprint: state.nlbn_overwrite_footprint,
+            overwrite_model_3d: state.nlbn_overwrite_model_3d,
             symbol_fill_color: state.nlbn_symbol_fill_color.clone(),
+            legacy_overwrite: None,
         },
         npnp: NpnpConfig {
             output_path: state.npnp_output_path.clone(),
@@ -340,6 +354,8 @@ pub fn snapshot_config(state: &MonitorState) -> AppConfig {
             history_save_path: state.history_save_path.clone(),
             matched_save_path: state.matched_save_path.clone(),
             imported_parts_save_path: state.imported_parts_save_path.clone(),
+            window_width: state.window_width,
+            window_height: state.window_height,
         },
     }
 }
@@ -349,7 +365,12 @@ fn apply_config(state: &mut MonitorState, config: &AppConfig, paths: &AppPaths) 
     state.nlbn_show_terminal = config.nlbn.show_terminal;
     state.set_nlbn_parallel(config.nlbn.parallel);
     state.set_nlbn_path_mode(config.nlbn.path_mode);
-    state.set_nlbn_overwrite(config.nlbn.overwrite);
+    state.set_nlbn_export_symbol(config.nlbn.export_symbol);
+    state.set_nlbn_export_footprint(config.nlbn.export_footprint);
+    state.set_nlbn_export_model_3d(config.nlbn.export_model_3d);
+    state.set_nlbn_overwrite_symbol(config.nlbn.overwrite_symbol);
+    state.set_nlbn_overwrite_footprint(config.nlbn.overwrite_footprint);
+    state.set_nlbn_overwrite_model_3d(config.nlbn.overwrite_model_3d);
     state.set_nlbn_symbol_fill_color(config.nlbn.symbol_fill_color.clone());
     state.set_npnp_output_path(config.npnp.output_path.clone());
     state.set_npnp_mode(config.npnp.mode.clone());
@@ -363,6 +384,8 @@ fn apply_config(state: &mut MonitorState, config: &AppConfig, paths: &AppPaths) 
     state.set_history_save_path(config.monitor.history_save_path.clone(), paths);
     state.set_matched_save_path(config.monitor.matched_save_path.clone(), paths);
     state.set_imported_parts_save_path(config.monitor.imported_parts_save_path.clone(), paths);
+    state.window_width = config.monitor.window_width;
+    state.window_height = config.monitor.window_height;
 }
 
 fn ensure_parent_dir(path: &Path) -> std::io::Result<()> {

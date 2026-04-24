@@ -11,7 +11,7 @@ pub mod tui;
 use controller::AppController;
 use serde::Serialize;
 use std::sync::Arc;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, PhysicalSize, State, WindowEvent};
 
 use crate::config::{AppConfig, NlbnPathMode};
 
@@ -25,7 +25,12 @@ pub struct AppState {
     pub nlbn_show_terminal: bool,
     pub nlbn_parallel: usize,
     pub nlbn_path_mode: NlbnPathMode,
-    pub nlbn_overwrite: bool,
+    pub nlbn_export_symbol: bool,
+    pub nlbn_export_footprint: bool,
+    pub nlbn_export_model_3d: bool,
+    pub nlbn_overwrite_symbol: bool,
+    pub nlbn_overwrite_footprint: bool,
+    pub nlbn_overwrite_model_3d: bool,
     pub nlbn_symbol_fill_color: Option<String>,
     pub nlbn_running: bool,
     pub npnp_output_path: String,
@@ -66,7 +71,12 @@ fn build_app_state(controller: &AppController) -> AppState {
             nlbn_show_terminal: m.nlbn_show_terminal,
             nlbn_parallel: m.nlbn_parallel,
             nlbn_path_mode: m.nlbn_path_mode,
-            nlbn_overwrite: m.nlbn_overwrite,
+            nlbn_export_symbol: m.nlbn_export_symbol,
+            nlbn_export_footprint: m.nlbn_export_footprint,
+            nlbn_export_model_3d: m.nlbn_export_model_3d,
+            nlbn_overwrite_symbol: m.nlbn_overwrite_symbol,
+            nlbn_overwrite_footprint: m.nlbn_overwrite_footprint,
+            nlbn_overwrite_model_3d: m.nlbn_overwrite_model_3d,
             nlbn_symbol_fill_color: m.nlbn_symbol_fill_color.clone(),
             nlbn_running: m.nlbn_running,
             npnp_output_path: m.npnp_output_path.clone(),
@@ -95,7 +105,12 @@ fn build_app_state(controller: &AppController) -> AppState {
             nlbn_show_terminal: defaults.nlbn.show_terminal,
             nlbn_parallel: defaults.nlbn.parallel,
             nlbn_path_mode: defaults.nlbn.path_mode,
-            nlbn_overwrite: defaults.nlbn.overwrite,
+            nlbn_export_symbol: defaults.nlbn.export_symbol,
+            nlbn_export_footprint: defaults.nlbn.export_footprint,
+            nlbn_export_model_3d: defaults.nlbn.export_model_3d,
+            nlbn_overwrite_symbol: defaults.nlbn.overwrite_symbol,
+            nlbn_overwrite_footprint: defaults.nlbn.overwrite_footprint,
+            nlbn_overwrite_model_3d: defaults.nlbn.overwrite_model_3d,
             nlbn_symbol_fill_color: defaults.nlbn.symbol_fill_color,
             nlbn_running: false,
             npnp_output_path: controller.paths().default_npnp_output_path_string(),
@@ -261,12 +276,83 @@ fn set_nlbn_path_mode(app: State<ManagedApp>, path_mode: NlbnPathMode) {
     save_config(&app);
 }
 
+fn parse_nlbn_asset_kind(target: &str) -> Result<&str, String> {
+    match target.trim().to_ascii_lowercase().as_str() {
+        "symbol" => Ok("symbol"),
+        "footprint" => Ok("footprint"),
+        "3d" | "model_3d" | "model-3d" => Ok("model_3d"),
+        _ => Err(format!("Unknown nlbn asset type: {}", target)),
+    }
+}
+
 #[tauri::command]
-fn set_nlbn_overwrite(app: State<ManagedApp>, overwrite: bool) {
+fn set_nlbn_export_enabled(
+    app: State<ManagedApp>,
+    target: String,
+    enabled: bool,
+) -> Result<(), String> {
     if let Ok(mut m) = app.controller.state().lock() {
-        m.set_nlbn_overwrite(overwrite);
+        match parse_nlbn_asset_kind(&target)? {
+            "symbol" => m.set_nlbn_export_symbol(enabled),
+            "footprint" => m.set_nlbn_export_footprint(enabled),
+            "model_3d" => m.set_nlbn_export_model_3d(enabled),
+            _ => unreachable!(),
+        }
+    } else {
+        return Err("State lock failed".to_string());
     }
     save_config(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_nlbn_export_symbol(app: State<ManagedApp>, enabled: bool) -> Result<(), String> {
+    set_nlbn_export_enabled(app, "symbol".to_string(), enabled)
+}
+
+#[tauri::command]
+fn set_nlbn_export_footprint(app: State<ManagedApp>, enabled: bool) -> Result<(), String> {
+    set_nlbn_export_enabled(app, "footprint".to_string(), enabled)
+}
+
+#[tauri::command]
+fn set_nlbn_export_model_3d(app: State<ManagedApp>, enabled: bool) -> Result<(), String> {
+    set_nlbn_export_enabled(app, "model_3d".to_string(), enabled)
+}
+
+#[tauri::command]
+fn set_nlbn_overwrite_enabled(
+    app: State<ManagedApp>,
+    target: String,
+    enabled: bool,
+) -> Result<(), String> {
+    if let Ok(mut m) = app.controller.state().lock() {
+        match parse_nlbn_asset_kind(&target)? {
+            "symbol" => m.set_nlbn_overwrite_symbol(enabled),
+            "footprint" => m.set_nlbn_overwrite_footprint(enabled),
+            "model_3d" => m.set_nlbn_overwrite_model_3d(enabled),
+            _ => unreachable!(),
+        }
+    } else {
+        return Err("State lock failed".to_string());
+    }
+    save_config(&app);
+    Ok(())
+}
+
+#[tauri::command]
+fn set_nlbn_overwrite_symbol(app: State<ManagedApp>, overwrite: bool) -> Result<(), String> {
+    set_nlbn_overwrite_enabled(app, "symbol".to_string(), overwrite)
+}
+
+#[tauri::command]
+fn set_nlbn_overwrite_footprint(app: State<ManagedApp>, overwrite: bool) -> Result<(), String> {
+    set_nlbn_overwrite_enabled(app, "footprint".to_string(), overwrite)
+}
+
+#[tauri::command]
+fn set_nlbn_overwrite_model_3d(app: State<ManagedApp>, overwrite: bool) -> Result<(), String> {
+    set_nlbn_overwrite_enabled(app, "model_3d".to_string(), overwrite)
 }
 
 #[tauri::command]
@@ -486,14 +572,42 @@ pub fn run() {
                 }),
             )
             .map_err(std::io::Error::other)?;
-            let always_on_top = controller
+            let (always_on_top, window_width, window_height) = controller
                 .state()
                 .lock()
-                .map(|state| state.always_on_top)
-                .unwrap_or(false);
+                .map(|state| {
+                    (
+                        state.always_on_top,
+                        state.window_width,
+                        state.window_height,
+                    )
+                })
+                .unwrap_or((false, None, None));
             app.manage(ManagedApp { controller });
             if let Some(window) = app.get_webview_window("main") {
+                if let (Some(width), Some(height)) = (window_width, window_height) {
+                    let _ = window.set_size(PhysicalSize::new(width, height));
+                }
                 let _ = window.set_always_on_top(always_on_top);
+                let app_handle = app.handle().clone();
+                let event_window = window.clone();
+                window.on_window_event(move |event| match event {
+                    WindowEvent::Resized(size) => {
+                        let is_maximized = event_window.is_maximized().unwrap_or(false);
+                        let is_minimized = event_window.is_minimized().unwrap_or(false);
+                        if !is_maximized
+                            && !is_minimized
+                            && let Ok(mut state) =
+                                app_handle.state::<ManagedApp>().controller.state().lock()
+                        {
+                            state.set_window_size(size.width, size.height);
+                        }
+                    }
+                    WindowEvent::CloseRequested { .. } | WindowEvent::Destroyed => {
+                        app_handle.state::<ManagedApp>().controller.save_config();
+                    }
+                    _ => {}
+                });
             }
             Ok(())
         })
@@ -517,7 +631,14 @@ pub fn run() {
             toggle_nlbn_terminal,
             set_nlbn_parallel,
             set_nlbn_path_mode,
-            set_nlbn_overwrite,
+            set_nlbn_export_enabled,
+            set_nlbn_export_symbol,
+            set_nlbn_export_footprint,
+            set_nlbn_export_model_3d,
+            set_nlbn_overwrite_enabled,
+            set_nlbn_overwrite_symbol,
+            set_nlbn_overwrite_footprint,
+            set_nlbn_overwrite_model_3d,
             set_nlbn_symbol_fill_color,
             set_npnp_path,
             set_npnp_mode,

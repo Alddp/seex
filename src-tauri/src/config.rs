@@ -3,6 +3,10 @@ use std::fs;
 
 use crate::app_paths::AppPaths;
 
+fn default_true() -> bool {
+    true
+}
+
 #[derive(Clone, Copy, Debug, Default, Serialize, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub enum NlbnPathMode {
@@ -81,7 +85,12 @@ mod tests {
         assert_eq!(config.nlbn.output_path, "/tmp/nlbn");
         assert!(!config.nlbn.show_terminal);
         assert_eq!(config.nlbn.parallel, 8);
-        assert!(config.nlbn.overwrite);
+        assert!(config.nlbn.export_symbol);
+        assert!(config.nlbn.export_footprint);
+        assert!(config.nlbn.export_model_3d);
+        assert!(config.nlbn.overwrite_symbol);
+        assert!(config.nlbn.overwrite_footprint);
+        assert!(config.nlbn.overwrite_model_3d);
         assert_eq!(config.nlbn.symbol_fill_color.as_deref(), Some("#005C8FCC"));
         assert_eq!(config.npnp.output_path, "/tmp/npnp");
         assert_eq!(config.npnp.mode, "pcblib");
@@ -110,6 +119,8 @@ mod tests {
 
         let saved = fs::read_to_string(paths.config_file()).unwrap();
         assert!(!saved.contains("symbol_fill_color"));
+        assert!(!saved.contains("\"overwrite\":"));
+        assert!(saved.contains("\"export_symbol\": true"));
         assert!(saved.contains("\"always_on_top\""));
         assert!(saved.contains("\"imported_parts_save_path\""));
 
@@ -143,6 +154,10 @@ pub struct MonitorConfig {
     pub history_save_path: String,
     pub matched_save_path: String,
     pub imported_parts_save_path: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_width: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub window_height: Option<u32>,
 }
 
 #[derive(Clone, Serialize, Deserialize)]
@@ -152,9 +167,19 @@ pub struct NlbnConfig {
     pub show_terminal: bool,
     pub parallel: usize,
     pub path_mode: NlbnPathMode,
-    pub overwrite: bool,
+    #[serde(default = "default_true")]
+    pub export_symbol: bool,
+    #[serde(default = "default_true")]
+    pub export_footprint: bool,
+    #[serde(default = "default_true")]
+    pub export_model_3d: bool,
+    pub overwrite_symbol: bool,
+    pub overwrite_footprint: bool,
+    pub overwrite_model_3d: bool,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub symbol_fill_color: Option<String>,
+    #[serde(default, rename = "overwrite", skip_serializing)]
+    pub(crate) legacy_overwrite: Option<bool>,
 }
 
 impl Default for NlbnConfig {
@@ -164,8 +189,14 @@ impl Default for NlbnConfig {
             show_terminal: true,
             parallel: 4,
             path_mode: NlbnPathMode::Auto,
-            overwrite: false,
+            export_symbol: true,
+            export_footprint: true,
+            export_model_3d: true,
+            overwrite_symbol: false,
+            overwrite_footprint: false,
+            overwrite_model_3d: false,
             symbol_fill_color: None,
+            legacy_overwrite: None,
         }
     }
 }
@@ -203,7 +234,9 @@ impl AppConfig {
         let path = paths.config_file();
         match fs::read_to_string(&path) {
             Ok(content) => {
-                serde_json::from_str(&content).unwrap_or_else(|_| Self::with_legacy(paths))
+                serde_json::from_str(&content)
+                    .map(Self::normalize)
+                    .unwrap_or_else(|_| Self::with_legacy(paths))
             }
             Err(_) => Self::with_legacy(paths),
         }
@@ -232,11 +265,25 @@ impl AppConfig {
     fn load_legacy_export_config(paths: &AppPaths) -> Option<Self> {
         let path = paths.legacy_config_file()?;
         let content = fs::read_to_string(path).ok()?;
-        serde_json::from_str(&content).ok()
+        serde_json::from_str(&content).ok().map(Self::normalize)
+    }
+
+    fn normalize(mut self) -> Self {
+        self.nlbn.normalize_legacy();
+        self
     }
 }
 
 impl NlbnConfig {
+    fn normalize_legacy(&mut self) {
+        if self.legacy_overwrite == Some(true) {
+            self.overwrite_symbol = true;
+            self.overwrite_footprint = true;
+            self.overwrite_model_3d = true;
+        }
+        self.legacy_overwrite = None;
+    }
+
     fn load_legacy(paths: &AppPaths) -> Self {
         let content = paths
             .legacy_nlbn_config_file()
@@ -273,8 +320,14 @@ impl NlbnConfig {
             show_terminal,
             parallel,
             path_mode: defaults.path_mode,
-            overwrite: defaults.overwrite,
+            export_symbol: defaults.export_symbol,
+            export_footprint: defaults.export_footprint,
+            export_model_3d: defaults.export_model_3d,
+            overwrite_symbol: defaults.overwrite_symbol,
+            overwrite_footprint: defaults.overwrite_footprint,
+            overwrite_model_3d: defaults.overwrite_model_3d,
             symbol_fill_color: defaults.symbol_fill_color,
+            legacy_overwrite: None,
         }
     }
 }

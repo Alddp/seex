@@ -14,6 +14,12 @@ interface AppState {
   nlbn_running: boolean;
   nlbn_path_mode?: string | null;
   nlbn_overwrite?: boolean;
+  nlbn_export_symbol?: boolean;
+  nlbn_export_footprint?: boolean;
+  nlbn_export_model_3d?: boolean;
+  nlbn_overwrite_symbol?: boolean;
+  nlbn_overwrite_footprint?: boolean;
+  nlbn_overwrite_model_3d?: boolean;
   nlbn_symbol_fill_color?: string | null;
   npnp_output_path: string;
   npnp_last_result: string | null;
@@ -77,7 +83,21 @@ interface ImportedSymbolsResponse {
 type Lang = "en" | "zh";
 type NpnpMode = "full" | "schlib" | "pcblib";
 type Nlbn3dPathMode = "auto" | "project_relative" | "library_relative";
+type NlbnAssetKey = "symbol" | "footprint" | "model_3d";
+type NlbnExportField = "nlbn_export_symbol" | "nlbn_export_footprint" | "nlbn_export_model_3d";
+type NlbnOverwriteField = "nlbn_overwrite_symbol" | "nlbn_overwrite_footprint" | "nlbn_overwrite_model_3d";
 type PageName = "monitor" | "history" | "export" | "imported" | "language" | "about";
+
+interface NlbnAssetToggle {
+  key: NlbnAssetKey;
+  labelKey: string;
+  exportField: NlbnExportField;
+  overwriteField: NlbnOverwriteField;
+  exportButtonId: string;
+  overwriteButtonId: string;
+  exportCommand: string;
+  overwriteCommand: string;
+}
 
 interface ExportCardOptions {
   tool: ExportTool;
@@ -90,6 +110,8 @@ interface ExportCardOptions {
   statusId: string;
   resultId: string;
   result: string | null;
+  buttonDisabled?: boolean;
+  derivedNotice?: ExportNotice | null;
 }
 
 const npnpModes: NpnpMode[] = ["full", "schlib", "pcblib"];
@@ -97,6 +119,39 @@ const nlbn3dModes: { id: string; value: Nlbn3dPathMode }[] = [
   { id: "btn-nlbn-3d-mode-auto", value: "auto" },
   { id: "btn-nlbn-3d-mode-project", value: "project_relative" },
   { id: "btn-nlbn-3d-mode-library", value: "library_relative" },
+];
+
+const nlbnAssetToggles: NlbnAssetToggle[] = [
+  {
+    key: "symbol",
+    labelKey: "export.nlbnAssetSymbol",
+    exportField: "nlbn_export_symbol",
+    overwriteField: "nlbn_overwrite_symbol",
+    exportButtonId: "btn-toggle-nlbn-export-symbol",
+    overwriteButtonId: "btn-toggle-nlbn-overwrite-symbol",
+    exportCommand: "set_nlbn_export_symbol",
+    overwriteCommand: "set_nlbn_overwrite_symbol",
+  },
+  {
+    key: "footprint",
+    labelKey: "export.nlbnAssetFootprint",
+    exportField: "nlbn_export_footprint",
+    overwriteField: "nlbn_overwrite_footprint",
+    exportButtonId: "btn-toggle-nlbn-export-footprint",
+    overwriteButtonId: "btn-toggle-nlbn-overwrite-footprint",
+    exportCommand: "set_nlbn_export_footprint",
+    overwriteCommand: "set_nlbn_overwrite_footprint",
+  },
+  {
+    key: "model_3d",
+    labelKey: "export.nlbnAssetModel3d",
+    exportField: "nlbn_export_model_3d",
+    overwriteField: "nlbn_overwrite_model_3d",
+    exportButtonId: "btn-toggle-nlbn-export-model-3d",
+    overwriteButtonId: "btn-toggle-nlbn-overwrite-model-3d",
+    exportCommand: "set_nlbn_export_model_3d",
+    overwriteCommand: "set_nlbn_overwrite_model_3d",
+  },
 ];
 
 const enTranslations: Record<string, string> = {
@@ -199,11 +254,15 @@ const enTranslations: Record<string, string> = {
   "export.nlbn3dModeProject": "KiCad Project",
   "export.nlbn3dModeLibrary": "Library Relative",
   "export.nlbn3dModeHint": "Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.",
-  "export.nlbnOverwrite": "Overwrite existing symbol:",
-  "export.nlbnOverwriteToggle": "Overwrite Existing",
+  "export.nlbnExportContent": "Export Content:",
+  "export.nlbnOverwriteExisting": "Overwrite Existing:",
+  "export.nlbnAssetSymbol": "Symbol",
+  "export.nlbnAssetFootprint": "Footprint",
+  "export.nlbnAssetModel3d": "3D Model",
+  "export.nlbnSelectAtLeastOne": "Enable at least one export content option to run nlbn export.",
   "export.overwriteOn": "Overwrite: ON",
   "export.overwriteOff": "Overwrite: OFF",
-  "export.nlbnOverwriteHint": "Re-export can replace existing symbols in the KiCad symbol library when enabled.",
+  "export.nlbnOverwriteHint": "Overwrite only applies to enabled export content. Turning an export item off will also turn its overwrite option off.",
   "export.nlbnFillColor": "Symbol fill color:",
   "export.nlbnFillColorHint": "Optional. Leave blank to keep nlbn/KiCad defaults. Supports #RRGGBB or #RRGGBBAA.",
   "export.nlbnFillColorPlaceholder": "Example: #005C8FCC",
@@ -339,11 +398,15 @@ const zhTranslations: Record<string, string> = {
   "export.nlbn3dModeProject": "KiCad \u9879\u76ee",
   "export.nlbn3dModeLibrary": "\u5e93\u76f8\u5bf9",
   "export.nlbn3dModeHint": "\u81ea\u52a8\u6a21\u5f0f\u4f1a\u6839\u636e\u5bfc\u51fa\u76ee\u5f55\u63a8\u65ad\u8def\u5f84\u7b56\u7565\uff0c\u4e5f\u53ef\u624b\u52a8\u6307\u5b9a KiCad 3D \u8def\u5f84\u751f\u6210\u65b9\u5f0f\u3002",
-  "export.nlbnOverwrite": "\u8986\u76d6\u5df2\u6709\u7b26\u53f7:",
-  "export.nlbnOverwriteToggle": "\u8986\u76d6\u5df2\u6709",
+  "export.nlbnExportContent": "\u5bfc\u51fa\u5185\u5bb9:",
+  "export.nlbnOverwriteExisting": "\u8986\u76d6\u5df2\u5b58\u5728:",
+  "export.nlbnAssetSymbol": "Symbol",
+  "export.nlbnAssetFootprint": "Footprint",
+  "export.nlbnAssetModel3d": "3D Model",
+  "export.nlbnSelectAtLeastOne": "\u81f3\u5c11\u542f\u7528\u4e00\u9879\u5bfc\u51fa\u5185\u5bb9\u540e\u624d\u80fd\u6267\u884c nlbn \u5bfc\u51fa\u3002",
   "export.overwriteOn": "\u8986\u76d6: \u5f00",
   "export.overwriteOff": "\u8986\u76d6: \u5173",
-  "export.nlbnOverwriteHint": "\u542f\u7528\u540e\uff0c\u91cd\u65b0\u5bfc\u51fa\u53ef\u4ee5\u66ff\u6362 KiCad \u7b26\u53f7\u5e93\u4e2d\u5df2\u5b58\u5728\u7684\u7b26\u53f7\u3002",
+  "export.nlbnOverwriteHint": "\u8986\u76d6\u53ea\u5bf9\u5df2\u542f\u7528\u7684\u5bfc\u51fa\u9879\u751f\u6548\uff0c\u5173\u95ed\u67d0\u9879\u5bfc\u51fa\u65f6\u4f1a\u540c\u65f6\u5173\u95ed\u5bf9\u5e94\u7684\u8986\u76d6\u3002",
   "export.nlbnFillColor": "\u7b26\u53f7\u586b\u5145\u989c\u8272:",
   "export.nlbnFillColorHint": "\u53ef\u9009\u3002\u7559\u7a7a\u5219\u4fdd\u6301 nlbn/KiCad \u9ed8\u8ba4\u586b\u5145\u884c\u4e3a\uff0c\u652f\u6301 #RRGGBB \u6216 #RRGGBBAA\u3002",
   "export.nlbnFillColorPlaceholder": "\u793a\u4f8b: #005C8FCC",
@@ -716,9 +779,41 @@ function renderExportProgress(tool: ExportTool, running: boolean, fallbackMessag
   bar.style.width = width;
 }
 
-function renderExportNotice(tool: ExportTool) {
+function nlbnExportEnabled(state: AppState, field: NlbnExportField): boolean {
+  return Boolean(state[field]);
+}
+
+function nlbnOverwriteEnabled(state: AppState, field: NlbnOverwriteField): boolean {
+  return Boolean(state[field]);
+}
+
+function hasAnyNlbnExportEnabled(state: AppState): boolean {
+  return nlbnAssetToggles.some((toggle) => nlbnExportEnabled(state, toggle.exportField));
+}
+
+function renderNlbnAssetToggles(state: AppState): boolean {
+  const anyExportEnabled = hasAnyNlbnExportEnabled(state);
+
+  nlbnAssetToggles.forEach((toggle) => {
+    const exportButton = $(toggle.exportButtonId) as HTMLButtonElement;
+    const overwriteButton = $(toggle.overwriteButtonId) as HTMLButtonElement;
+    const exportEnabled = nlbnExportEnabled(state, toggle.exportField);
+    const overwriteEnabled = exportEnabled && nlbnOverwriteEnabled(state, toggle.overwriteField);
+
+    exportButton.classList.toggle("active", exportEnabled);
+    exportButton.setAttribute("aria-pressed", String(exportEnabled));
+
+    overwriteButton.classList.toggle("active", overwriteEnabled);
+    overwriteButton.disabled = !exportEnabled;
+    overwriteButton.setAttribute("aria-pressed", String(overwriteEnabled));
+  });
+
+  return anyExportEnabled;
+}
+
+function renderExportNotice(tool: ExportTool, derivedNotice: ExportNotice | null = null) {
   const status = $(toolElementId(tool, "status"));
-  const notice = exportUi[tool].notice;
+  const notice = exportUi[tool].notice ?? derivedNotice;
   if (!notice) {
     status.textContent = "";
     status.className = "msg msg-warn hidden";
@@ -729,10 +824,10 @@ function renderExportNotice(tool: ExportTool) {
   status.className = `msg ${messageClass(notice.kind)}`;
 }
 
-function renderExportResult(tool: ExportTool, result: string | null, busy: boolean) {
+function renderExportResult(tool: ExportTool, result: string | null, busy: boolean, derivedNotice: ExportNotice | null = null) {
   const resultBox = $(toolElementId(tool, "result"));
   const promptVisible = tool === "nlbn" && !$("nlbn-not-found").classList.contains("hidden");
-  if (!result || busy || exportUi[tool].notice !== null || promptVisible) {
+  if (!result || busy || exportUi[tool].notice !== null || derivedNotice !== null || promptVisible) {
     resultBox.textContent = "";
     resultBox.className = "msg msg-info hidden";
     return;
@@ -747,12 +842,12 @@ function renderExporterCard(options: ExportCardOptions) {
 
   const busy = options.running || exportUi[options.tool].progress !== null;
   const button = $(options.buttonId) as HTMLButtonElement;
-  button.disabled = options.matchedCount === 0 || busy;
+  button.disabled = options.matchedCount === 0 || busy || Boolean(options.buttonDisabled);
   button.textContent = busy ? t("export.running") : t(options.exportLabelKey);
 
   renderExportProgress(options.tool, busy, t(options.runningLabelKey));
-  renderExportNotice(options.tool);
-  renderExportResult(options.tool, options.result, busy);
+  renderExportNotice(options.tool, options.derivedNotice ?? null);
+  renderExportResult(options.tool, options.result, busy, options.derivedNotice ?? null);
 }
 
 function syncExportProgressWithState(state: AppState) {
@@ -836,8 +931,7 @@ function renderState(state: AppState) {
   syncInputValue("imported-parts-save-path-input", state.imported_parts_save_path);
 
   $("nlbn-terminal-status").textContent = state.nlbn_show_terminal ? t("export.terminalOn") : t("export.terminalOff");
-  $("btn-toggle-nlbn-overwrite").classList.toggle("active", Boolean(state.nlbn_overwrite));
-  $("nlbn-overwrite-status").textContent = state.nlbn_overwrite ? t("export.overwriteOn") : t("export.overwriteOff");
+  const nlbnHasExportSelection = renderNlbnAssetToggles(state);
   renderNlbn3dMode();
   renderNlbnFillColorDraft();
 
@@ -856,6 +950,13 @@ function renderState(state: AppState) {
     statusId: "nlbn-status",
     resultId: "nlbn-result",
     result: state.nlbn_last_result,
+    buttonDisabled: !nlbnHasExportSelection,
+    derivedNotice: nlbnHasExportSelection
+      ? null
+      : {
+          kind: "warn",
+          message: t("export.nlbnSelectAtLeastOne"),
+        },
   });
 
   renderExporterCard({
@@ -1445,6 +1546,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("btn-nlbn-export").addEventListener("click", async () => {
     $("nlbn-not-found").classList.add("hidden");
 
+    if (lastState && !hasAnyNlbnExportEnabled(lastState)) {
+      setExportNotice("nlbn", t("export.nlbnSelectAtLeastOne"));
+      return;
+    }
+
     try {
       await queueExportConfigWrite(async () => {
         await syncNlbnExportInputs();
@@ -1504,11 +1610,29 @@ window.addEventListener("DOMContentLoaded", async () => {
     });
   });
 
-  $("btn-toggle-nlbn-overwrite").addEventListener("click", async () => {
-    const active = $("btn-toggle-nlbn-overwrite").classList.contains("active");
-    await queueExportConfigWrite(async () => {
-      await invoke("set_nlbn_overwrite", { overwrite: !active });
-      await refreshState();
+  nlbnAssetToggles.forEach((toggle) => {
+    $(toggle.exportButtonId).addEventListener("click", async () => {
+      const active = $(toggle.exportButtonId).classList.contains("active");
+      await queueExportConfigWrite(async () => {
+        await invoke(toggle.exportCommand, { enabled: !active });
+        if (active) {
+          await invoke(toggle.overwriteCommand, { overwrite: false });
+        }
+        await refreshState();
+      });
+    });
+
+    $(toggle.overwriteButtonId).addEventListener("click", async () => {
+      const button = $(toggle.overwriteButtonId) as HTMLButtonElement;
+      if (button.disabled) {
+        return;
+      }
+
+      const active = button.classList.contains("active");
+      await queueExportConfigWrite(async () => {
+        await invoke(toggle.overwriteCommand, { overwrite: !active });
+        await refreshState();
+      });
     });
   });
 

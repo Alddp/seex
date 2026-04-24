@@ -356,6 +356,30 @@ textarea,
   margin-top: 6px;
 }
 
+.nlbn-toggle-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.nlbn-toggle-row {
+  display: grid;
+  grid-template-columns: 120px minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+}
+
+.nlbn-toggle-title {
+  margin: 0;
+}
+
+.nlbn-toggle-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
 /* ================================================================== */
 /*  INPUTS                                                             */
 /* ================================================================== */
@@ -1219,6 +1243,10 @@ html.lang-zh {
   .export-grid,
   .imported-control-grid,
   .imported-editor-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .nlbn-toggle-row {
     grid-template-columns: 1fr;
   }
 }

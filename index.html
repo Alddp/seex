@@ -218,10 +218,23 @@
                     <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-library" data-i18n="export.nlbn3dModeLibrary">Library Relative</button>
                   </div>
                   <div id="nlbn-3d-mode-hint" class="hint setting-hint" data-i18n="export.nlbn3dModeHint">Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.</div>
-                  <label class="hint setting-label" data-i18n="export.nlbnOverwrite">Overwrite existing symbol:</label>
-                  <div class="row setting-row">
-                    <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite" data-i18n="export.nlbnOverwriteToggle">Overwrite Existing</button>
-                    <span id="nlbn-overwrite-status" class="hint"></span>
+                  <div class="nlbn-toggle-group">
+                    <div class="nlbn-toggle-row setting-label">
+                      <span class="hint nlbn-toggle-title" data-i18n="export.nlbnExportContent">Export Content:</span>
+                      <div class="nlbn-toggle-buttons">
+                        <button class="btn-pill btn-sm" id="btn-toggle-nlbn-export-symbol" data-i18n="export.nlbnAssetSymbol">Symbol</button>
+                        <button class="btn-pill btn-sm" id="btn-toggle-nlbn-export-footprint" data-i18n="export.nlbnAssetFootprint">Footprint</button>
+                        <button class="btn-pill btn-sm" id="btn-toggle-nlbn-export-model-3d" data-i18n="export.nlbnAssetModel3d">3D Model</button>
+                      </div>
+                    </div>
+                    <div class="nlbn-toggle-row">
+                      <span class="hint nlbn-toggle-title" data-i18n="export.nlbnOverwriteExisting">Overwrite Existing:</span>
+                      <div class="nlbn-toggle-buttons">
+                        <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite-symbol" data-i18n="export.nlbnAssetSymbol">Symbol</button>
+                        <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite-footprint" data-i18n="export.nlbnAssetFootprint">Footprint</button>
+                        <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite-model-3d" data-i18n="export.nlbnAssetModel3d">3D Model</button>
+                      </div>
+                    </div>
                   </div>
                   <div class="hint setting-hint" data-i18n="export.nlbnOverwriteHint">Re-export can replace existing symbols in the KiCad symbol library when enabled.</div>
                   <label class="hint setting-label" data-i18n="export.nlbnFillColor">Symbol fill color:</label>

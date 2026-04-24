@@ -34,7 +34,12 @@ pub struct MonitorState {
     pub nlbn_show_terminal: bool,
     pub nlbn_parallel: usize,
     pub nlbn_path_mode: NlbnPathMode,
-    pub nlbn_overwrite: bool,
+    pub nlbn_export_symbol: bool,
+    pub nlbn_export_footprint: bool,
+    pub nlbn_export_model_3d: bool,
+    pub nlbn_overwrite_symbol: bool,
+    pub nlbn_overwrite_footprint: bool,
+    pub nlbn_overwrite_model_3d: bool,
     pub nlbn_symbol_fill_color: Option<String>,
     pub nlbn_running: bool,
     pub npnp_output_path: String,
@@ -50,6 +55,8 @@ pub struct MonitorState {
     pub history_save_path: String,
     pub matched_save_path: String,
     pub imported_parts_save_path: String,
+    pub window_width: Option<u32>,
+    pub window_height: Option<u32>,
     default_nlbn_output_path: String,
     default_npnp_output_path: String,
 }
@@ -72,7 +79,12 @@ impl MonitorState {
             nlbn_show_terminal: true,
             nlbn_parallel: 4,
             nlbn_path_mode: NlbnPathMode::Auto,
-            nlbn_overwrite: false,
+            nlbn_export_symbol: true,
+            nlbn_export_footprint: true,
+            nlbn_export_model_3d: true,
+            nlbn_overwrite_symbol: false,
+            nlbn_overwrite_footprint: false,
+            nlbn_overwrite_model_3d: false,
             nlbn_symbol_fill_color: None,
             nlbn_running: false,
             npnp_output_path: default_npnp_output_path.clone(),
@@ -88,6 +100,8 @@ impl MonitorState {
             history_save_path: paths.default_history_save_path_string(),
             matched_save_path: paths.default_matched_save_path_string(),
             imported_parts_save_path: paths.default_imported_parts_save_path_string(),
+            window_width: None,
+            window_height: None,
             default_nlbn_output_path,
             default_npnp_output_path,
         }
@@ -197,8 +211,37 @@ impl MonitorState {
         self.nlbn_path_mode = path_mode;
     }
 
-    pub fn set_nlbn_overwrite(&mut self, overwrite: bool) {
-        self.nlbn_overwrite = overwrite;
+    pub fn set_nlbn_export_symbol(&mut self, enabled: bool) {
+        self.nlbn_export_symbol = enabled;
+        if !enabled {
+            self.nlbn_overwrite_symbol = false;
+        }
+    }
+
+    pub fn set_nlbn_export_footprint(&mut self, enabled: bool) {
+        self.nlbn_export_footprint = enabled;
+        if !enabled {
+            self.nlbn_overwrite_footprint = false;
+        }
+    }
+
+    pub fn set_nlbn_export_model_3d(&mut self, enabled: bool) {
+        self.nlbn_export_model_3d = enabled;
+        if !enabled {
+            self.nlbn_overwrite_model_3d = false;
+        }
+    }
+
+    pub fn set_nlbn_overwrite_symbol(&mut self, overwrite: bool) {
+        self.nlbn_overwrite_symbol = self.nlbn_export_symbol && overwrite;
+    }
+
+    pub fn set_nlbn_overwrite_footprint(&mut self, overwrite: bool) {
+        self.nlbn_overwrite_footprint = self.nlbn_export_footprint && overwrite;
+    }
+
+    pub fn set_nlbn_overwrite_model_3d(&mut self, overwrite: bool) {
+        self.nlbn_overwrite_model_3d = self.nlbn_export_model_3d && overwrite;
     }
 
     pub fn set_nlbn_symbol_fill_color(&mut self, color: Option<String>) {
@@ -269,6 +312,15 @@ impl MonitorState {
 
     pub fn set_imported_parts_save_path(&mut self, path: String, paths: &AppPaths) {
         self.imported_parts_save_path = paths.resolve_imported_parts_save_path(&path);
+    }
+
+    pub fn set_window_size(&mut self, width: u32, height: u32) {
+        self.window_width = Some(width);
+        self.window_height = Some(height);
+    }
+
+    pub fn nlbn_has_export_targets(&self) -> bool {
+        self.nlbn_export_symbol || self.nlbn_export_footprint || self.nlbn_export_model_3d
     }
 
     pub fn delete_history(&mut self, index: usize) {

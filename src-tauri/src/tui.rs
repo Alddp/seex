@@ -162,7 +162,9 @@ struct Snapshot {
     nlbn_show_terminal: bool,
     nlbn_parallel: usize,
     nlbn_path_mode: NlbnPathMode,
-    nlbn_overwrite: bool,
+    nlbn_overwrite_symbol: bool,
+    nlbn_overwrite_footprint: bool,
+    nlbn_overwrite_model_3d: bool,
     nlbn_last_result: Option<String>,
     nlbn_running: bool,
     npnp_output_path: String,
@@ -248,7 +250,9 @@ fn snapshot(controller: &AppController) -> Snapshot {
         nlbn_show_terminal: state.nlbn_show_terminal,
         nlbn_parallel: state.nlbn_parallel,
         nlbn_path_mode: state.nlbn_path_mode,
-        nlbn_overwrite: state.nlbn_overwrite,
+        nlbn_overwrite_symbol: state.nlbn_overwrite_symbol,
+        nlbn_overwrite_footprint: state.nlbn_overwrite_footprint,
+        nlbn_overwrite_model_3d: state.nlbn_overwrite_model_3d,
         nlbn_last_result: state.nlbn_last_result.clone(),
         nlbn_running: state.nlbn_running,
         npnp_output_path: state.npnp_output_path.clone(),
@@ -479,7 +483,14 @@ fn adjust_run_field(controller: &AppController, ui: &mut UiState, delta: isize) 
             m.set_nlbn_path_mode(next);
         }),
         (Exporter::Nlbn, RunField::Overwrite) => {
-            with_state(controller, |m| m.set_nlbn_overwrite(!m.nlbn_overwrite))
+            with_state(controller, |m| {
+                let enable_all = !(m.nlbn_overwrite_symbol
+                    && m.nlbn_overwrite_footprint
+                    && m.nlbn_overwrite_model_3d);
+                m.set_nlbn_overwrite_symbol(enable_all);
+                m.set_nlbn_overwrite_footprint(enable_all);
+                m.set_nlbn_overwrite_model_3d(enable_all);
+            })
         }
         (Exporter::Npnp, RunField::Mode) => with_state(controller, |m| {
             let next = match (m.npnp_mode.as_str(), delta.signum()) {
@@ -944,7 +955,21 @@ fn run_field_value(snapshot: &Snapshot, ui: &UiState, field: RunField) -> String
             NlbnPathMode::ProjectRelative => "project_relative".to_string(),
             NlbnPathMode::LibraryRelative => "library_relative".to_string(),
         },
-        (Exporter::Nlbn, RunField::Overwrite) => yes_no(snapshot.nlbn_overwrite).to_string(),
+        (Exporter::Nlbn, RunField::Overwrite) => {
+            let all = snapshot.nlbn_overwrite_symbol
+                && snapshot.nlbn_overwrite_footprint
+                && snapshot.nlbn_overwrite_model_3d;
+            let any = snapshot.nlbn_overwrite_symbol
+                || snapshot.nlbn_overwrite_footprint
+                || snapshot.nlbn_overwrite_model_3d;
+            if all {
+                "all".to_string()
+            } else if any {
+                "partial".to_string()
+            } else {
+                "off".to_string()
+            }
+        }
         (Exporter::Npnp, RunField::Mode) => snapshot.npnp_mode.clone(),
         (Exporter::Npnp, RunField::Merge) => yes_no(snapshot.npnp_merge).to_string(),
         (Exporter::Npnp, RunField::Append) => yes_no(snapshot.npnp_append).to_string(),
