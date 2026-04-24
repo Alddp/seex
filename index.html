@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="zh-CN">
   <head>
     <meta charset="UTF-8" />
     <link rel="stylesheet" href="/src/styles.css" />
@@ -13,7 +13,7 @@
       <nav id="sidebar">
         <div class="sidebar-header">
           <span class="sidebar-brand">SeEx</span>
-          <button id="btn-collapse" class="sidebar-collapse" title="Toggle sidebar">
+          <button id="btn-collapse" class="sidebar-collapse" title="切换侧边栏">
             <svg width="16" height="16" viewBox="0 0 16 16" fill="none"><path d="M2 4h12M2 8h12M2 12h12" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>
           </button>
         </div>
@@ -35,10 +35,6 @@
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M4 7h16"/><path d="M4 12h16"/><path d="M4 17h10"/><path d="m18 15 2 2-2 2"/></svg>
             <span class="nav-label" data-i18n="nav.imported">Imported</span>
           </li>
-          <li class="nav-item" data-page="language">
-            <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M2 12h20"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10A15.3 15.3 0 0 1 12 2z"/></svg>
-            <span class="nav-label" data-i18n="nav.language">Language</span>
-          </li>
           <li class="nav-item" data-page="about">
             <svg class="nav-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
             <span class="nav-label" data-i18n="nav.about">About</span>
@@ -57,7 +53,7 @@
         <section class="page active" id="page-monitor">
           <div class="page-header">
             <h2 data-i18n="nav.monitor">Monitor</h2>
-            <span class="page-desc" id="monitor-status">Keyword: none | H: 0 | M: 0</span>
+            <span class="page-desc" id="monitor-status">关键词: 无 | H: 0 | M: 0</span>
           </div>
           <div class="page-body">
             <div class="card">
@@ -391,28 +387,6 @@
           </div>
         </section>
 
-        <section class="page" id="page-language">
-          <div class="page-header">
-            <h2 data-i18n="nav.language">Language</h2>
-            <span class="page-desc" data-i18n="language.desc">Switch interface language</span>
-          </div>
-          <div class="page-body">
-            <div class="card">
-              <div class="card-title" data-i18n="language.select">Select Language</div>
-              <div class="lang-options">
-                <button class="lang-btn active" id="btn-lang-en">
-                  <span class="lang-flag">EN</span>
-                  <span class="lang-name">English</span>
-                </button>
-                <button class="lang-btn" id="btn-lang-zh">
-                  <span class="lang-flag">ZH</span>
-                  <span class="lang-name">Chinese</span>
-                </button>
-              </div>
-            </div>
-          </div>
-        </section>
-
         <section class="page" id="page-about">
           <div class="page-header">
             <h2 data-i18n="nav.about">About</h2>
@@ -442,9 +416,9 @@
     </div>
 
     <footer id="status-bar">
-      <span id="status-keyword">Keyword: none</span>
+      <span id="status-keyword">关键词: 无</span>
       <span id="status-counts">H: 0 | M: 0</span>
-      <button id="btn-toggle-always-on-top" class="status-toggle">Always on Top: OFF</button>
+      <button id="btn-toggle-always-on-top" class="status-toggle">窗口置顶: 关</button>
       <span id="status-listening" class="status-dot" data-i18n="status.listening">Listening</span>
     </footer>
   </body>

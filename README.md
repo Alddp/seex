@@ -84,17 +84,7 @@ The **Export** page supports two export backends:
 
 ---
 
-### 4. Language — Switch between English and Chinese
-
-<p align="center">
-  <img src="public/imgs/Language.png" alt="Language Page" width="700" />
-</p>
-
-Click **English** or **Chinese** to switch the entire interface language. When Chinese is selected, the embedded **Source Han Sans** font is used for consistent rendering across all platforms. Your preference is saved and remembered.
-
----
-
-### 5. About
+### 4. About
 
 <p align="center">
   <img src="public/imgs/About.png" alt="About Page" width="700" />

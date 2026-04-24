@@ -233,11 +233,9 @@ impl AppConfig {
     pub fn load(paths: &AppPaths) -> Self {
         let path = paths.config_file();
         match fs::read_to_string(&path) {
-            Ok(content) => {
-                serde_json::from_str(&content)
-                    .map(Self::normalize)
-                    .unwrap_or_else(|_| Self::with_legacy(paths))
-            }
+            Ok(content) => serde_json::from_str(&content)
+                .map(Self::normalize)
+                .unwrap_or_else(|_| Self::with_legacy(paths)),
             Err(_) => Self::with_legacy(paths),
         }
     }

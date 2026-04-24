@@ -284,7 +284,9 @@ fn inspect_installation() -> Result<NlbnInstallation, String> {
 }
 
 fn validate_installation(installation: &NlbnInstallation) -> Result<(), String> {
-    if !installation.capabilities.supports_granular_export_and_overwrite()
+    if !installation
+        .capabilities
+        .supports_granular_export_and_overwrite()
         || !installation.capabilities.symbol_fill_color
     {
         return Err(format!(
@@ -404,11 +406,7 @@ fn run_in_terminal(
 
     #[cfg(target_os = "windows")]
     {
-        let command_line = format!(
-            "\"{}\" {}",
-            executable.display(),
-            windows_join_args(&args)
-        );
+        let command_line = format!("\"{}\" {}", executable.display(), windows_join_args(&args));
         let bat_content = format!(
             "@echo on\r\ncd /D \"{}\"\r\n{}\r\necho.\r\necho === Done ===\r\npause\r\n",
             work_dir.display(),
@@ -689,8 +687,7 @@ fn build_nlbn_args(
     symbol_fill_color: Option<&str>,
 ) -> Vec<String> {
     let mut args = Vec::new();
-    let export_all =
-        request.export_symbol && request.export_footprint && request.export_model_3d;
+    let export_all = request.export_symbol && request.export_footprint && request.export_model_3d;
 
     if export_all {
         args.push("--full".to_string());

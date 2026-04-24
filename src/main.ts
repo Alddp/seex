@@ -13,7 +13,6 @@ interface AppState {
   nlbn_parallel: number;
   nlbn_running: boolean;
   nlbn_path_mode?: string | null;
-  nlbn_overwrite?: boolean;
   nlbn_export_symbol?: boolean;
   nlbn_export_footprint?: boolean;
   nlbn_export_model_3d?: boolean;
@@ -80,13 +79,12 @@ interface ImportedSymbolsResponse {
   items: ImportedSymbol[];
 }
 
-type Lang = "en" | "zh";
 type NpnpMode = "full" | "schlib" | "pcblib";
 type Nlbn3dPathMode = "auto" | "project_relative" | "library_relative";
 type NlbnAssetKey = "symbol" | "footprint" | "model_3d";
 type NlbnExportField = "nlbn_export_symbol" | "nlbn_export_footprint" | "nlbn_export_model_3d";
 type NlbnOverwriteField = "nlbn_overwrite_symbol" | "nlbn_overwrite_footprint" | "nlbn_overwrite_model_3d";
-type PageName = "monitor" | "history" | "export" | "imported" | "language" | "about";
+type PageName = "monitor" | "history" | "export" | "imported" | "about";
 
 interface NlbnAssetToggle {
   key: NlbnAssetKey;
@@ -159,7 +157,6 @@ const enTranslations: Record<string, string> = {
   "nav.history": "History",
   "nav.export": "Export",
   "nav.imported": "Imported",
-  "nav.language": "Language",
   "nav.about": "About",
   "status.listening": "Listening",
   "status.alwaysOnTopOn": "Always on Top: ON",
@@ -289,8 +286,6 @@ const enTranslations: Record<string, string> = {
   "export.npnpParallelHint": "Controls npnp batch concurrency and must be at least 1.",
   "export.continueOnError": "Continue On Error",
   "export.force": "Force",
-  "language.desc": "Switch interface language",
-  "language.select": "Select Language",
   "about.tagline": "Clipboard Event Tracker",
   "about.desc": "Monitors clipboard in real time, extracts component IDs using keyword or regex, and exports via nlbn or npnp.",
   "status.keyword": "Keyword:",
@@ -303,7 +298,6 @@ const zhTranslations: Record<string, string> = {
   "nav.history": "\u5386\u53f2",
   "nav.export": "\u5bfc\u51fa",
   "nav.imported": "\u5df2\u5bfc\u5165",
-  "nav.language": "\u8bed\u8a00",
   "nav.about": "\u5173\u4e8e",
   "status.listening": "\u76d1\u542c\u4e2d",
   "status.alwaysOnTopOn": "\u7a97\u53e3\u7f6e\u9876: \u5f00",
@@ -431,20 +425,12 @@ const zhTranslations: Record<string, string> = {
   "export.npnpParallelHint": "\u63a7\u5236 npnp \u6279\u91cf\u5bfc\u51fa\u5e76\u53d1\u6570\uff0c\u4e14\u81f3\u5c11\u4e3a 1\u3002",
   "export.continueOnError": "\u51fa\u9519\u7ee7\u7eed",
   "export.force": "\u5f3a\u5236",
-  "language.desc": "\u5207\u6362\u754c\u9762\u8bed\u8a00",
-  "language.select": "\u9009\u62e9\u8bed\u8a00",
   "about.tagline": "\u526a\u8d34\u677f\u4e8b\u4ef6\u8ffd\u8e2a\u5668",
   "about.desc": "\u5b9e\u65f6\u76d1\u542c\u526a\u8d34\u677f\uff0c\u6309\u5173\u952e\u5b57\u6216\u6b63\u5219\u63d0\u53d6\u5143\u4ef6 ID\uff0c\u5e76\u901a\u8fc7 nlbn \u6216 npnp \u5bfc\u51fa\u3002",
   "status.keyword": "\u5173\u952e\u5b57:",
   "status.none": "\u65e0",
 };
 
-const translations: Record<Lang, Record<string, string>> = {
-  en: enTranslations,
-  zh: zhTranslations,
-};
-
-let currentLang: Lang = "en";
 let currentPage: PageName = "monitor";
 let showMatched = true;
 let showHistory = true;
@@ -506,7 +492,7 @@ function normalizeNlbn3dPathMode(value: unknown): Nlbn3dPathMode | null {
 }
 
 function t(key: string): string {
-  return translations[currentLang][key] ?? translations.en[key] ?? key;
+  return zhTranslations[key] ?? enTranslations[key] ?? key;
 }
 
 function formatMessage(key: string, values: Record<string, string>): string {
@@ -629,13 +615,8 @@ function buildKeyword(): string {
   return parts.join("||");
 }
 
-function applyLanguage(lang: Lang) {
-  currentLang = lang;
-  localStorage.setItem("seex-lang", lang);
-
-  document.documentElement.classList.toggle("lang-zh", lang === "zh");
-  document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
-
+function applyStaticTranslations() {
+  document.documentElement.lang = "zh-CN";
   document.querySelectorAll("[data-i18n]").forEach((el) => {
     const key = el.getAttribute("data-i18n")!;
     el.textContent = t(key);
@@ -645,9 +626,6 @@ function applyLanguage(lang: Lang) {
     const key = el.getAttribute("data-i18n-placeholder")!;
     (el as HTMLInputElement).placeholder = t(key);
   });
-
-  $("btn-lang-en").classList.toggle("active", lang === "en");
-  $("btn-lang-zh").classList.toggle("active", lang === "zh");
   $("btn-toggle-matched").textContent = showMatched ? t("monitor.show") : t("monitor.hide");
   renderImportedPanel();
   rerenderState();
@@ -1460,11 +1438,7 @@ async function deleteImportedItem(item: ImportedSymbol) {
 }
 
 window.addEventListener("DOMContentLoaded", async () => {
-  const savedLang = localStorage.getItem("seex-lang") as Lang | null;
-  if (savedLang === "zh" || savedLang === "en") {
-    applyLanguage(savedLang);
-  }
-
+  applyStaticTranslations();
   await refreshState();
   await listen("clipboard-changed", () => {
     void refreshState();
@@ -1492,16 +1466,6 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   $("btn-collapse").addEventListener("click", () => {
     $("sidebar").classList.toggle("collapsed");
-  });
-
-  $("btn-lang-en").addEventListener("click", () => {
-    applyLanguage("en");
-    void refreshState();
-  });
-
-  $("btn-lang-zh").addEventListener("click", () => {
-    applyLanguage("zh");
-    void refreshState();
   });
 
   $("btn-toggle-always-on-top").addEventListener("click", async () => {

@@ -482,16 +482,14 @@ fn adjust_run_field(controller: &AppController, ui: &mut UiState, delta: isize) 
             };
             m.set_nlbn_path_mode(next);
         }),
-        (Exporter::Nlbn, RunField::Overwrite) => {
-            with_state(controller, |m| {
-                let enable_all = !(m.nlbn_overwrite_symbol
-                    && m.nlbn_overwrite_footprint
-                    && m.nlbn_overwrite_model_3d);
-                m.set_nlbn_overwrite_symbol(enable_all);
-                m.set_nlbn_overwrite_footprint(enable_all);
-                m.set_nlbn_overwrite_model_3d(enable_all);
-            })
-        }
+        (Exporter::Nlbn, RunField::Overwrite) => with_state(controller, |m| {
+            let enable_all = !(m.nlbn_overwrite_symbol
+                && m.nlbn_overwrite_footprint
+                && m.nlbn_overwrite_model_3d);
+            m.set_nlbn_overwrite_symbol(enable_all);
+            m.set_nlbn_overwrite_footprint(enable_all);
+            m.set_nlbn_overwrite_model_3d(enable_all);
+        }),
         (Exporter::Npnp, RunField::Mode) => with_state(controller, |m| {
             let next = match (m.npnp_mode.as_str(), delta.signum()) {
                 ("full", -1) => "pcblib",

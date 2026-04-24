@@ -134,8 +134,21 @@ fn build_app_state(controller: &AppController) -> AppState {
     }
 }
 
-fn save_config(app: &State<ManagedApp>) {
-    app.controller.save_config();
+fn update_state<T, F>(app: &State<ManagedApp>, update: F) -> Result<T, String>
+where
+    F: FnOnce(&mut crate::monitor::MonitorState) -> Result<T, String>,
+{
+    app.controller.update_state_and_save(update)
+}
+
+fn update_state_and_ignore_lock_error<F>(app: &State<ManagedApp>, update: F)
+where
+    F: FnOnce(&mut crate::monitor::MonitorState),
+{
+    let _ = update_state(app, |state| {
+        update(state);
+        Ok(())
+    });
 }
 
 #[tauri::command]
@@ -222,58 +235,54 @@ fn queue_lcsc_parts(app: State<ManagedApp>, parts: Vec<String>) -> String {
 
 #[tauri::command]
 fn set_history_save_path(app: State<ManagedApp>, path: String) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_history_save_path(path, app.controller.paths());
-    }
-    save_config(&app);
+    let paths = app.controller.paths().clone();
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_history_save_path(path, &paths);
+    });
 }
 
 #[tauri::command]
 fn set_matched_save_path(app: State<ManagedApp>, path: String) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_matched_save_path(path, app.controller.paths());
-    }
-    save_config(&app);
+    let paths = app.controller.paths().clone();
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_matched_save_path(path, &paths);
+    });
 }
 
 #[tauri::command]
 fn set_imported_parts_save_path(app: State<ManagedApp>, path: String) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_imported_parts_save_path(path, app.controller.paths());
-    }
-    save_config(&app);
+    let paths = app.controller.paths().clone();
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_imported_parts_save_path(path, &paths);
+    });
 }
 
 #[tauri::command]
 fn set_nlbn_path(app: State<ManagedApp>, path: String) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_nlbn_output_path(path);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_nlbn_output_path(path);
+    });
 }
 
 #[tauri::command]
 fn toggle_nlbn_terminal(app: State<ManagedApp>) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.toggle_nlbn_show_terminal();
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, |state| {
+        state.toggle_nlbn_show_terminal();
+    });
 }
 
 #[tauri::command]
 fn set_nlbn_parallel(app: State<ManagedApp>, parallel: usize) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_nlbn_parallel(parallel);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_nlbn_parallel(parallel);
+    });
 }
 
 #[tauri::command]
 fn set_nlbn_path_mode(app: State<ManagedApp>, path_mode: NlbnPathMode) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_nlbn_path_mode(path_mode);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_nlbn_path_mode(path_mode);
+    });
 }
 
 fn parse_nlbn_asset_kind(target: &str) -> Result<&str, String> {
@@ -291,18 +300,15 @@ fn set_nlbn_export_enabled(
     target: String,
     enabled: bool,
 ) -> Result<(), String> {
-    if let Ok(mut m) = app.controller.state().lock() {
+    update_state(&app, move |state| {
         match parse_nlbn_asset_kind(&target)? {
-            "symbol" => m.set_nlbn_export_symbol(enabled),
-            "footprint" => m.set_nlbn_export_footprint(enabled),
-            "model_3d" => m.set_nlbn_export_model_3d(enabled),
+            "symbol" => state.set_nlbn_export_symbol(enabled),
+            "footprint" => state.set_nlbn_export_footprint(enabled),
+            "model_3d" => state.set_nlbn_export_model_3d(enabled),
             _ => unreachable!(),
         }
-    } else {
-        return Err("State lock failed".to_string());
-    }
-    save_config(&app);
-    Ok(())
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -326,18 +332,15 @@ fn set_nlbn_overwrite_enabled(
     target: String,
     enabled: bool,
 ) -> Result<(), String> {
-    if let Ok(mut m) = app.controller.state().lock() {
+    update_state(&app, move |state| {
         match parse_nlbn_asset_kind(&target)? {
-            "symbol" => m.set_nlbn_overwrite_symbol(enabled),
-            "footprint" => m.set_nlbn_overwrite_footprint(enabled),
-            "model_3d" => m.set_nlbn_overwrite_model_3d(enabled),
+            "symbol" => state.set_nlbn_overwrite_symbol(enabled),
+            "footprint" => state.set_nlbn_overwrite_footprint(enabled),
+            "model_3d" => state.set_nlbn_overwrite_model_3d(enabled),
             _ => unreachable!(),
         }
-    } else {
-        return Err("State lock failed".to_string());
-    }
-    save_config(&app);
-    Ok(())
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -357,74 +360,65 @@ fn set_nlbn_overwrite_model_3d(app: State<ManagedApp>, overwrite: bool) -> Resul
 
 #[tauri::command]
 fn set_nlbn_symbol_fill_color(app: State<ManagedApp>, color: Option<String>) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_nlbn_symbol_fill_color(color);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_nlbn_symbol_fill_color(color);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_path(app: State<ManagedApp>, path: String) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_output_path(path);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_output_path(path);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_mode(app: State<ManagedApp>, mode: String) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_mode(mode);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_mode(mode);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_merge(app: State<ManagedApp>, merge: bool) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_merge(merge);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_merge(merge);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_append(app: State<ManagedApp>, append: bool) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_append(append);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_append(append);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_library_name(app: State<ManagedApp>, library_name: String) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_library_name(library_name);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_library_name(library_name);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_parallel(app: State<ManagedApp>, parallel: usize) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_parallel(parallel);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_parallel(parallel);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_continue_on_error(app: State<ManagedApp>, continue_on_error: bool) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_continue_on_error(continue_on_error);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_continue_on_error(continue_on_error);
+    });
 }
 
 #[tauri::command]
 fn set_npnp_force(app: State<ManagedApp>, force: bool) {
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.set_npnp_force(force);
-    }
-    save_config(&app);
+    update_state_and_ignore_lock_error(&app, move |state| {
+        state.set_npnp_force(force);
+    });
 }
 
 #[tauri::command]
@@ -440,11 +434,10 @@ fn set_window_always_on_top(
         .set_always_on_top(always_on_top)
         .map_err(|err| err.to_string())?;
 
-    if let Ok(mut m) = app.controller.state().lock() {
-        m.always_on_top = always_on_top;
-    }
-    save_config(&app);
-    Ok(())
+    update_state(&app, move |state| {
+        state.always_on_top = always_on_top;
+        Ok(())
+    })
 }
 
 #[tauri::command]
@@ -575,13 +568,7 @@ pub fn run() {
             let (always_on_top, window_width, window_height) = controller
                 .state()
                 .lock()
-                .map(|state| {
-                    (
-                        state.always_on_top,
-                        state.window_width,
-                        state.window_height,
-                    )
-                })
+                .map(|state| (state.always_on_top, state.window_width, state.window_height))
                 .unwrap_or((false, None, None));
             app.manage(ManagedApp { controller });
             if let Some(window) = app.get_webview_window("main") {

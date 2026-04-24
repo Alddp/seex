@@ -14,11 +14,11 @@ use crate::{nlbn, npnp};
 const DEFAULT_KEYWORD: &str =
     "regex:\u{7f16}\u{53f7}[\u{ff1a}:]\\s*(C\\d+)||regex:(?m)^(C\\d{3,})$";
 
-struct ImportedPartsParseResult {
-    unique_parts: Vec<String>,
-    parsed_count: usize,
-    duplicate_count: usize,
-    invalid_line_count: usize,
+struct LcscPartCollectionSummary {
+    normalized_parts: Vec<String>,
+    matched_part_count: usize,
+    duplicate_part_count: usize,
+    invalid_entry_count: usize,
 }
 
 pub struct AppController {
@@ -66,6 +66,25 @@ impl AppController {
         if let Ok(state) = self.state.lock() {
             snapshot_config(&state).save(&self.paths);
         }
+    }
+
+    pub fn update_state_and_save<T, F>(&self, update: F) -> Result<T, String>
+    where
+        F: FnOnce(&mut MonitorState) -> Result<T, String>,
+    {
+        let config_snapshot = {
+            let mut state = self
+                .state
+                .lock()
+                .map_err(|_| "State lock failed".to_string())?;
+            let result = update(&mut state)?;
+            let config = snapshot_config(&state);
+            (result, config)
+        };
+
+        let (result, config) = config_snapshot;
+        config.save(&self.paths);
+        Ok(result)
     }
 
     pub fn save_history(&self) -> String {
@@ -171,7 +190,7 @@ impl AppController {
             Err(err) => return format!("Import failed: {} ({})", import_path.display(), err),
         };
         let parsed = parse_imported_parts_text(&content);
-        if parsed.unique_parts.is_empty() {
+        if parsed.normalized_parts.is_empty() {
             return format!("No LCSC parts found in {}", import_path.display());
         }
 
@@ -180,7 +199,7 @@ impl AppController {
                 return "State lock failed".to_string();
             };
             let timestamp = Local::now().format("%H:%M:%S").to_string();
-            let merge = m.merge_matched_ids(parsed.unique_parts.iter().cloned(), timestamp);
+            let merge = m.merge_matched_ids(parsed.normalized_parts.iter().cloned(), timestamp);
             m.add_debug_log(format!(
                 "Imported {} new matched parts from {}",
                 merge.added,
@@ -190,13 +209,13 @@ impl AppController {
         };
 
         format!(
-            "Imported {} LCSC part(s) from {} ({} match(es), {} unique, {} duplicate hit(s) in file, {} line(s) without a C-code, {} already queued, matched queue now has {} item(s))",
+            "Imported {} LCSC part(s) from {} ({} matched part occurrence(s), {} unique part(s), {} duplicate occurrence(s) in file, {} invalid line(s), {} already queued, matched queue now has {} item(s))",
             added,
             import_path.display(),
-            parsed.parsed_count,
-            parsed.unique_parts.len(),
-            parsed.duplicate_count,
-            parsed.invalid_line_count,
+            parsed.matched_part_count,
+            parsed.normalized_parts.len(),
+            parsed.duplicate_part_count,
+            parsed.invalid_entry_count,
             already_queued,
             matched_count
         )
@@ -211,17 +230,17 @@ impl AppController {
         };
 
         let normalized = normalize_direct_lcsc_parts(parts);
-        if normalized.unique_parts.is_empty() {
+        if normalized.normalized_parts.is_empty() {
             return "No valid LCSC parts to export".to_string();
         }
 
-        match save_parts_file(&save_path, &normalized.unique_parts) {
+        match save_parts_file(&save_path, &normalized.normalized_parts) {
             Ok(()) => format!(
-                "Exported {} LCSC part(s) to {} ({} duplicate input, {} invalid input)",
-                normalized.unique_parts.len(),
+                "Exported {} LCSC part(s) to {} ({} duplicate input(s), {} invalid input(s))",
+                normalized.normalized_parts.len(),
                 save_path.display(),
-                normalized.duplicate_count,
-                normalized.invalid_line_count
+                normalized.duplicate_part_count,
+                normalized.invalid_entry_count
             ),
             Err(message) => message,
         }
@@ -229,7 +248,7 @@ impl AppController {
 
     pub fn queue_lcsc_parts(&self, parts: Vec<String>) -> String {
         let normalized = normalize_direct_lcsc_parts(parts);
-        if normalized.unique_parts.is_empty() {
+        if normalized.normalized_parts.is_empty() {
             return "No valid LCSC parts to queue".to_string();
         }
 
@@ -238,17 +257,17 @@ impl AppController {
                 return "State lock failed".to_string();
             };
             let timestamp = Local::now().format("%H:%M:%S").to_string();
-            let merge = m.merge_matched_ids(normalized.unique_parts.iter().cloned(), timestamp);
+            let merge = m.merge_matched_ids(normalized.normalized_parts.iter().cloned(), timestamp);
             m.add_debug_log(format!("Queued {} direct LCSC part(s)", merge.added));
             (merge.added, merge.already_present, m.matched.len())
         };
 
         format!(
-            "Queued {} LCSC part(s) ({} unique, {} duplicate input, {} invalid input, {} already queued, matched queue now has {} item(s))",
+            "Queued {} LCSC part(s) ({} unique part(s), {} duplicate input(s), {} invalid input(s), {} already queued, matched queue now has {} item(s))",
             added,
-            normalized.unique_parts.len(),
-            normalized.duplicate_count,
-            normalized.invalid_line_count,
+            normalized.normalized_parts.len(),
+            normalized.duplicate_part_count,
+            normalized.invalid_entry_count,
             already_queued,
             matched_count
         )
@@ -410,12 +429,12 @@ fn save_parts_file(path: &Path, parts: &[String]) -> Result<(), String> {
     Ok(())
 }
 
-fn parse_imported_parts_text(content: &str) -> ImportedPartsParseResult {
+fn parse_imported_parts_text(content: &str) -> LcscPartCollectionSummary {
     let regex = Regex::new(r"(?i)c\d+").expect("import regex should compile");
     let mut seen = HashSet::new();
-    let mut unique_parts = Vec::new();
-    let mut parsed_count = 0usize;
-    let mut invalid_line_count = 0usize;
+    let mut normalized_parts = Vec::new();
+    let mut matched_part_count = 0usize;
+    let mut invalid_entry_count = 0usize;
 
     for line in content.lines() {
         let trimmed = line.trim();
@@ -437,31 +456,31 @@ fn parse_imported_parts_text(content: &str) -> ImportedPartsParseResult {
             }
 
             matched = true;
-            parsed_count += 1;
+            matched_part_count += 1;
             let normalized = capture.as_str().to_ascii_uppercase();
             if seen.insert(normalized.clone()) {
-                unique_parts.push(normalized);
+                normalized_parts.push(normalized);
             }
         }
 
         if !matched {
-            invalid_line_count += 1;
+            invalid_entry_count += 1;
         }
     }
 
-    ImportedPartsParseResult {
-        duplicate_count: parsed_count.saturating_sub(unique_parts.len()),
-        unique_parts,
-        parsed_count,
-        invalid_line_count,
+    LcscPartCollectionSummary {
+        duplicate_part_count: matched_part_count.saturating_sub(normalized_parts.len()),
+        normalized_parts,
+        matched_part_count,
+        invalid_entry_count,
     }
 }
 
-fn normalize_direct_lcsc_parts(parts: Vec<String>) -> ImportedPartsParseResult {
+fn normalize_direct_lcsc_parts(parts: Vec<String>) -> LcscPartCollectionSummary {
     let mut seen = HashSet::new();
-    let mut unique_parts = Vec::new();
-    let mut parsed_count = 0usize;
-    let mut invalid_line_count = 0usize;
+    let mut normalized_parts = Vec::new();
+    let mut matched_part_count = 0usize;
+    let mut invalid_entry_count = 0usize;
 
     for part in parts {
         let trimmed = part.trim();
@@ -470,22 +489,22 @@ fn normalize_direct_lcsc_parts(parts: Vec<String>) -> ImportedPartsParseResult {
         }
 
         if !is_strict_lcsc_part(trimmed) {
-            invalid_line_count += 1;
+            invalid_entry_count += 1;
             continue;
         }
 
-        parsed_count += 1;
+        matched_part_count += 1;
         let normalized = trimmed.to_ascii_uppercase();
         if seen.insert(normalized.clone()) {
-            unique_parts.push(normalized);
+            normalized_parts.push(normalized);
         }
     }
 
-    ImportedPartsParseResult {
-        duplicate_count: parsed_count.saturating_sub(unique_parts.len()),
-        unique_parts,
-        parsed_count,
-        invalid_line_count,
+    LcscPartCollectionSummary {
+        duplicate_part_count: matched_part_count.saturating_sub(normalized_parts.len()),
+        normalized_parts,
+        matched_part_count,
+        invalid_entry_count,
     }
 }
 
@@ -607,12 +626,12 @@ mod tests {
         let parsed = parse_imported_parts_text("C123\njunk\nc123 C456\n\nC456\nXC789\n");
 
         assert_eq!(
-            parsed.unique_parts,
+            parsed.normalized_parts,
             vec!["C123".to_string(), "C456".to_string()]
         );
-        assert_eq!(parsed.parsed_count, 4);
-        assert_eq!(parsed.duplicate_count, 2);
-        assert_eq!(parsed.invalid_line_count, 2);
+        assert_eq!(parsed.matched_part_count, 4);
+        assert_eq!(parsed.duplicate_part_count, 2);
+        assert_eq!(parsed.invalid_entry_count, 2);
     }
 
     #[test]
@@ -626,12 +645,12 @@ mod tests {
         ]);
 
         assert_eq!(
-            parsed.unique_parts,
+            parsed.normalized_parts,
             vec!["C123".to_string(), "C456".to_string()]
         );
-        assert_eq!(parsed.parsed_count, 3);
-        assert_eq!(parsed.duplicate_count, 1);
-        assert_eq!(parsed.invalid_line_count, 2);
+        assert_eq!(parsed.matched_part_count, 3);
+        assert_eq!(parsed.duplicate_part_count, 1);
+        assert_eq!(parsed.invalid_entry_count, 2);
     }
 
     #[test]
@@ -668,7 +687,7 @@ mod tests {
         assert_eq!(
             result,
             format!(
-                "Imported 1 LCSC part(s) from {} (3 match(es), 2 unique, 1 duplicate hit(s) in file, 1 line(s) without a C-code, 1 already queued, matched queue now has 2 item(s))",
+                "Imported 1 LCSC part(s) from {} (3 matched part occurrence(s), 2 unique part(s), 1 duplicate occurrence(s) in file, 1 invalid line(s), 1 already queued, matched queue now has 2 item(s))",
                 import_path.display()
             )
         );
@@ -763,7 +782,7 @@ mod tests {
         assert_eq!(
             result,
             format!(
-                "Exported 2 LCSC part(s) to {} (1 duplicate input, 1 invalid input)",
+                "Exported 2 LCSC part(s) to {} (1 duplicate input(s), 1 invalid input(s))",
                 save_path.display()
             )
         );
@@ -803,7 +822,7 @@ mod tests {
 
         assert_eq!(
             result,
-            "Queued 1 LCSC part(s) (2 unique, 1 duplicate input, 1 invalid input, 1 already queued, matched queue now has 2 item(s))"
+            "Queued 1 LCSC part(s) (2 unique part(s), 1 duplicate input(s), 1 invalid input(s), 1 already queued, matched queue now has 2 item(s))"
         );
 
         let state = controller
