@@ -177,13 +177,11 @@ pub fn spawn_export(
                             );
                             s.nlbn_last_result = Some(full.clone());
                             s.add_debug_log(full.clone());
-                            if !req.show_terminal {
-                                notify_payload = Some(ExportFinishedPayload {
-                                    tool: "nlbn",
-                                    success: true,
-                                    message: full,
-                                });
-                            }
+                            notify_payload = Some(ExportFinishedPayload {
+                                tool: "nlbn",
+                                success: true,
+                                message: full,
+                            });
                         }
                         Err(msg) => {
                             s.nlbn_last_result = Some(msg.clone());

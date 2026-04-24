@@ -1,5 +1,6 @@
 use chrono::Local;
 use regex::Regex;
+use std::collections::HashSet;
 use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -147,23 +148,14 @@ impl AppController {
             return "No imported LCSC Part values to export".to_string();
         }
 
-        if let Err(err) = ensure_parent_dir(&save_path) {
-            return format!("Export failed: {}", err);
+        match save_parts_file(&save_path, &parts) {
+            Ok(()) => format!(
+                "Exported {} LCSC part(s) to {}",
+                parts.len(),
+                save_path.display()
+            ),
+            Err(message) => message,
         }
-        let file = match std::fs::File::create(&save_path) {
-            Ok(file) => file,
-            Err(err) => return format!("Export failed: {}", err),
-        };
-        let mut writer = std::io::BufWriter::new(file);
-        for part in &parts {
-            if let Err(err) = writeln!(writer, "{}", part) {
-                return format!("Export failed: {}", err);
-            }
-        }
-        if let Err(err) = writer.flush() {
-            return format!("Export failed: {}", err);
-        }
-        format!("Exported to {}", save_path.display())
     }
 
     pub fn import_imported_parts(&self) -> String {
@@ -205,6 +197,58 @@ impl AppController {
             parsed.unique_parts.len(),
             parsed.duplicate_count,
             parsed.invalid_line_count,
+            already_queued,
+            matched_count
+        )
+    }
+
+    pub fn save_lcsc_parts(&self, parts: Vec<String>) -> String {
+        let save_path = {
+            let Ok(m) = self.state.lock() else {
+                return "State lock failed".to_string();
+            };
+            PathBuf::from(&m.imported_parts_save_path)
+        };
+
+        let normalized = normalize_direct_lcsc_parts(parts);
+        if normalized.unique_parts.is_empty() {
+            return "No valid LCSC parts to export".to_string();
+        }
+
+        match save_parts_file(&save_path, &normalized.unique_parts) {
+            Ok(()) => format!(
+                "Exported {} LCSC part(s) to {} ({} duplicate input, {} invalid input)",
+                normalized.unique_parts.len(),
+                save_path.display(),
+                normalized.duplicate_count,
+                normalized.invalid_line_count
+            ),
+            Err(message) => message,
+        }
+    }
+
+    pub fn queue_lcsc_parts(&self, parts: Vec<String>) -> String {
+        let normalized = normalize_direct_lcsc_parts(parts);
+        if normalized.unique_parts.is_empty() {
+            return "No valid LCSC parts to queue".to_string();
+        }
+
+        let (added, already_queued, matched_count) = {
+            let Ok(mut m) = self.state.lock() else {
+                return "State lock failed".to_string();
+            };
+            let timestamp = Local::now().format("%H:%M:%S").to_string();
+            let merge = m.merge_matched_ids(normalized.unique_parts.iter().cloned(), timestamp);
+            m.add_debug_log(format!("Queued {} direct LCSC part(s)", merge.added));
+            (merge.added, merge.already_present, m.matched.len())
+        };
+
+        format!(
+            "Queued {} LCSC part(s) ({} unique, {} duplicate input, {} invalid input, {} already queued, matched queue now has {} item(s))",
+            added,
+            normalized.unique_parts.len(),
+            normalized.duplicate_count,
+            normalized.invalid_line_count,
             already_queued,
             matched_count
         )
@@ -328,9 +372,22 @@ fn ensure_parent_dir(path: &Path) -> std::io::Result<()> {
     Ok(())
 }
 
+fn save_parts_file(path: &Path, parts: &[String]) -> Result<(), String> {
+    ensure_parent_dir(path).map_err(|err| format!("Export failed: {}", err))?;
+    let file = std::fs::File::create(path).map_err(|err| format!("Export failed: {}", err))?;
+    let mut writer = std::io::BufWriter::new(file);
+    for part in parts {
+        writeln!(writer, "{}", part).map_err(|err| format!("Export failed: {}", err))?;
+    }
+    writer
+        .flush()
+        .map_err(|err| format!("Export failed: {}", err))?;
+    Ok(())
+}
+
 fn parse_imported_parts_text(content: &str) -> ImportedPartsParseResult {
     let regex = Regex::new(r"(?i)c\d+").expect("import regex should compile");
-    let mut seen = std::collections::HashSet::new();
+    let mut seen = HashSet::new();
     let mut unique_parts = Vec::new();
     let mut parsed_count = 0usize;
     let mut invalid_line_count = 0usize;
@@ -375,13 +432,50 @@ fn parse_imported_parts_text(content: &str) -> ImportedPartsParseResult {
     }
 }
 
+fn normalize_direct_lcsc_parts(parts: Vec<String>) -> ImportedPartsParseResult {
+    let mut seen = HashSet::new();
+    let mut unique_parts = Vec::new();
+    let mut parsed_count = 0usize;
+    let mut invalid_line_count = 0usize;
+
+    for part in parts {
+        let trimmed = part.trim();
+        if trimmed.is_empty() {
+            continue;
+        }
+
+        if !is_strict_lcsc_part(trimmed) {
+            invalid_line_count += 1;
+            continue;
+        }
+
+        parsed_count += 1;
+        let normalized = trimmed.to_ascii_uppercase();
+        if seen.insert(normalized.clone()) {
+            unique_parts.push(normalized);
+        }
+    }
+
+    ImportedPartsParseResult {
+        duplicate_count: parsed_count.saturating_sub(unique_parts.len()),
+        unique_parts,
+        parsed_count,
+        invalid_line_count,
+    }
+}
+
 fn is_lcsc_boundary_blocker(ch: char) -> bool {
     ch.is_ascii_alphanumeric()
 }
 
+fn is_strict_lcsc_part(value: &str) -> bool {
+    let mut chars = value.chars();
+    matches!(chars.next(), Some('c' | 'C')) && chars.all(|ch| ch.is_ascii_digit())
+}
+
 #[cfg(test)]
 mod tests {
-    use super::{AppController, parse_imported_parts_text};
+    use super::{AppController, normalize_direct_lcsc_parts, parse_imported_parts_text};
     use crate::app_paths::AppPaths;
     use std::fs;
     use std::path::PathBuf;
@@ -456,7 +550,10 @@ mod tests {
         }
 
         let result = controller.save_imported_parts();
-        assert_eq!(result, format!("Exported to {}", save_path.display()));
+        assert_eq!(
+            result,
+            format!("Exported 2 LCSC part(s) to {}", save_path.display())
+        );
         assert_eq!(fs::read_to_string(&save_path).unwrap(), "C123\nC456\n");
 
         let _ = fs::remove_dir_all(root);
@@ -484,9 +581,31 @@ mod tests {
     fn parse_imported_parts_text_reports_unique_duplicates_and_invalid_lines() {
         let parsed = parse_imported_parts_text("C123\njunk\nc123 C456\n\nC456\nXC789\n");
 
-        assert_eq!(parsed.unique_parts, vec!["C123".to_string(), "C456".to_string()]);
+        assert_eq!(
+            parsed.unique_parts,
+            vec!["C123".to_string(), "C456".to_string()]
+        );
         assert_eq!(parsed.parsed_count, 4);
         assert_eq!(parsed.duplicate_count, 2);
+        assert_eq!(parsed.invalid_line_count, 2);
+    }
+
+    #[test]
+    fn normalize_direct_lcsc_parts_deduplicates_and_rejects_invalid_values() {
+        let parsed = normalize_direct_lcsc_parts(vec![
+            "C123".to_string(),
+            "c123".to_string(),
+            " C456 ".to_string(),
+            "junk".to_string(),
+            "XC789".to_string(),
+        ]);
+
+        assert_eq!(
+            parsed.unique_parts,
+            vec!["C123".to_string(), "C456".to_string()]
+        );
+        assert_eq!(parsed.parsed_count, 3);
+        assert_eq!(parsed.duplicate_count, 1);
         assert_eq!(parsed.invalid_line_count, 2);
     }
 
@@ -511,8 +630,13 @@ mod tests {
                 .state()
                 .lock()
                 .expect("state lock should succeed");
-            state.set_imported_parts_save_path(import_path.display().to_string(), controller.paths());
-            state.matched.push(("10:00:00".to_string(), "C456".to_string()));
+            state.set_imported_parts_save_path(
+                import_path.display().to_string(),
+                controller.paths(),
+            );
+            state
+                .matched
+                .push(("10:00:00".to_string(), "C456".to_string()));
         }
 
         let result = controller.import_imported_parts();
@@ -528,7 +652,10 @@ mod tests {
             .state()
             .lock()
             .expect("state lock should succeed");
-        assert_eq!(state.get_unique_ids(), vec!["C123".to_string(), "C456".to_string()]);
+        assert_eq!(
+            state.get_unique_ids(),
+            vec!["C123".to_string(), "C456".to_string()]
+        );
 
         let _ = fs::remove_dir_all(root);
     }
@@ -558,7 +685,10 @@ mod tests {
                 .state()
                 .lock()
                 .expect("state lock should succeed");
-            state.set_imported_parts_save_path(import_path.display().to_string(), controller.paths());
+            state.set_imported_parts_save_path(
+                import_path.display().to_string(),
+                controller.paths(),
+            );
         }
 
         let result = controller.import_imported_parts();
@@ -572,6 +702,92 @@ mod tests {
         assert_eq!(
             state.get_unique_ids().first().map(String::as_str),
             Some("C1")
+        );
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn save_lcsc_parts_uses_direct_selection() {
+        let root = test_root("save_direct_parts");
+        let paths = AppPaths::for_test(
+            root.join("config"),
+            root.join("data"),
+            root.join("cache"),
+            None,
+        );
+        let controller =
+            AppController::new(paths, Arc::new(|| {})).expect("controller should initialize");
+        let save_path = root.join("out").join("selected.txt");
+
+        {
+            let mut state = controller
+                .state()
+                .lock()
+                .expect("state lock should succeed");
+            state.set_imported_parts_save_path(save_path.display().to_string(), controller.paths());
+        }
+
+        let result = controller.save_lcsc_parts(vec![
+            "C123".to_string(),
+            "c123".to_string(),
+            "bad".to_string(),
+            "C456".to_string(),
+        ]);
+
+        assert_eq!(
+            result,
+            format!(
+                "Exported 2 LCSC part(s) to {} (1 duplicate input, 1 invalid input)",
+                save_path.display()
+            )
+        );
+        assert_eq!(fs::read_to_string(&save_path).unwrap(), "C123\nC456\n");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn queue_lcsc_parts_merges_selection_into_matched_queue() {
+        let root = test_root("queue_direct_parts");
+        let paths = AppPaths::for_test(
+            root.join("config"),
+            root.join("data"),
+            root.join("cache"),
+            None,
+        );
+        let controller =
+            AppController::new(paths, Arc::new(|| {})).expect("controller should initialize");
+
+        {
+            let mut state = controller
+                .state()
+                .lock()
+                .expect("state lock should succeed");
+            state
+                .matched
+                .push(("10:00:00".to_string(), "C456".to_string()));
+        }
+
+        let result = controller.queue_lcsc_parts(vec![
+            "C123".to_string(),
+            "c123".to_string(),
+            "C456".to_string(),
+            "invalid".to_string(),
+        ]);
+
+        assert_eq!(
+            result,
+            "Queued 1 LCSC part(s) (2 unique, 1 duplicate input, 1 invalid input, 1 already queued, matched queue now has 2 item(s))"
+        );
+
+        let state = controller
+            .state()
+            .lock()
+            .expect("state lock should succeed");
+        assert_eq!(
+            state.get_unique_ids(),
+            vec!["C123".to_string(), "C456".to_string()]
         );
 
         let _ = fs::remove_dir_all(root);

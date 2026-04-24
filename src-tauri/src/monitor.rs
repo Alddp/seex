@@ -2,6 +2,7 @@ use arboard::Clipboard;
 use chrono::Local;
 use clipboard_master::{CallbackResult, ClipboardHandler, Master, Shutdown};
 use std::collections::HashSet;
+use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, mpsc};
 use std::thread::{self, JoinHandle};
@@ -178,7 +179,7 @@ impl MonitorState {
         self.nlbn_output_path = if trimmed.is_empty() {
             self.default_nlbn_output_path.clone()
         } else {
-            trimmed.to_string()
+            resolve_user_path(trimmed)
         };
     }
 
@@ -214,7 +215,7 @@ impl MonitorState {
         self.npnp_output_path = if trimmed.is_empty() {
             self.default_npnp_output_path.clone()
         } else {
-            trimmed.to_string()
+            resolve_user_path(trimmed)
         };
     }
 
@@ -315,6 +316,35 @@ impl MonitorState {
             .map(|(_, id)| id.clone())
             .collect()
     }
+}
+
+fn resolve_user_path(value: &str) -> String {
+    let expanded = expand_home_path(value);
+    if expanded.is_absolute() {
+        expanded.display().to_string()
+    } else {
+        std::env::current_dir()
+            .unwrap_or_else(|_| PathBuf::from("."))
+            .join(expanded)
+            .display()
+            .to_string()
+    }
+}
+
+fn expand_home_path(value: &str) -> PathBuf {
+    if value == "~" {
+        return std::env::var_os("HOME")
+            .map(PathBuf::from)
+            .unwrap_or_else(|| PathBuf::from(value));
+    }
+
+    if let Some(stripped) = value.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return PathBuf::from(home).join(stripped);
+        }
+    }
+
+    PathBuf::from(value)
 }
 
 struct Handler {

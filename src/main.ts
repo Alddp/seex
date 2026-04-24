@@ -14,6 +14,7 @@ interface AppState {
   nlbn_running: boolean;
   nlbn_path_mode?: string | null;
   nlbn_overwrite?: boolean;
+  nlbn_symbol_fill_color?: string | null;
   npnp_output_path: string;
   npnp_last_result: string | null;
   npnp_running: boolean;
@@ -147,8 +148,21 @@ const enTranslations: Record<string, string> = {
   "imported.actions": "Actions",
   "imported.loading": "Loading imported symbols...",
   "imported.empty": "No imported symbols found in the current nlbn output library.",
+  "imported.noFilterResults": "No imported symbols match the current filter.",
   "imported.copyPart": "Copy LCSC Part",
   "imported.copied": "LCSC Part copied to clipboard.",
+  "imported.search": "Search:",
+  "imported.searchPlaceholder": "Filter by LCSC Part or symbol name",
+  "imported.total": "Total",
+  "imported.filtered": "Filtered",
+  "imported.selected": "Selected",
+  "imported.selectFiltered": "Select Filtered",
+  "imported.clearSelection": "Clear Selection",
+  "imported.copyParts": "Copy Parts",
+  "imported.queueParts": "Queue Parts",
+  "imported.queuePart": "Queue",
+  "imported.selectionHint": "Copy, queue, and export use selected parts first; if nothing is selected, the current filtered list is used.",
+  "imported.noActionableParts": "No LCSC parts available for this action.",
   "export.desc": "Component export integrations",
   "export.nlbnExport": "nlbn Export",
   "export.npnpExport": "npnp Export",
@@ -176,6 +190,12 @@ const enTranslations: Record<string, string> = {
   "export.overwriteOn": "Overwrite: ON",
   "export.overwriteOff": "Overwrite: OFF",
   "export.nlbnOverwriteHint": "Re-export can replace existing symbols in the KiCad symbol library when enabled.",
+  "export.nlbnFillColor": "Symbol fill color:",
+  "export.nlbnFillColorHint": "Optional. Leave blank to keep nlbn/KiCad defaults. Supports #RRGGBB or #RRGGBBAA.",
+  "export.nlbnFillColorPlaceholder": "Example: #005C8FCC",
+  "export.nlbnFillColorClear": "Clear",
+  "export.nlbnFillColorAuto": "No override",
+  "export.nlbnFillColorInvalid": "Use #RRGGBB or #RRGGBBAA.",
   "export.example": "Example: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "nlbn is not installed",
   "export.nlbnInstallHint": "Install nlbn and add it to your system PATH to use this feature.",
@@ -256,8 +276,21 @@ const zhTranslations: Record<string, string> = {
   "imported.actions": "\u64cd\u4f5c",
   "imported.loading": "\u6b63\u5728\u52a0\u8f7d\u5df2\u5bfc\u5165\u7b26\u53f7...",
   "imported.empty": "\u5f53\u524d nlbn \u8f93\u51fa\u7b26\u53f7\u5e93\u4e2d\u8fd8\u6ca1\u6709\u627e\u5230\u5df2\u5bfc\u5165\u7b26\u53f7\u3002",
+  "imported.noFilterResults": "\u5f53\u524d\u7b5b\u9009\u6761\u4ef6\u4e0b\u6ca1\u6709\u5339\u914d\u7684\u5df2\u5bfc\u5165\u7b26\u53f7\u3002",
   "imported.copyPart": "\u590d\u5236 LCSC Part",
   "imported.copied": "LCSC Part \u5df2\u590d\u5236\u5230\u526a\u8d34\u677f\u3002",
+  "imported.search": "\u641c\u7d22:",
+  "imported.searchPlaceholder": "\u6309 LCSC Part \u6216\u7b26\u53f7\u540d\u7b5b\u9009",
+  "imported.total": "\u603b\u6570",
+  "imported.filtered": "\u7b5b\u9009\u540e",
+  "imported.selected": "\u5df2\u9009",
+  "imported.selectFiltered": "\u9009\u62e9\u7b5b\u9009\u7ed3\u679c",
+  "imported.clearSelection": "\u6e05\u7a7a\u9009\u62e9",
+  "imported.copyParts": "\u590d\u5236 Part",
+  "imported.queueParts": "\u52a0\u5165\u961f\u5217",
+  "imported.queuePart": "\u5165\u961f",
+  "imported.selectionHint": "\u201c\u590d\u5236 Part\u201d\u3001\u201c\u52a0\u5165\u961f\u5217\u201d\u548c\u201c\u5bfc\u51fa Part\u201d\u4f1a\u4f18\u5148\u4f7f\u7528\u5df2\u9009\u6761\u76ee\uff0c\u82e5\u672a\u9009\u4e2d\u5219\u4f7f\u7528\u5f53\u524d\u7b5b\u9009\u7ed3\u679c\u3002",
+  "imported.noActionableParts": "\u5f53\u524d\u6ca1\u6709\u53ef\u7528\u4e8e\u6b64\u64cd\u4f5c\u7684 LCSC Part\u3002",
   "export.desc": "\u5143\u4ef6\u5bfc\u51fa\u96c6\u6210",
   "export.nlbnExport": "nlbn \u5bfc\u51fa",
   "export.npnpExport": "npnp \u5bfc\u51fa",
@@ -285,6 +318,12 @@ const zhTranslations: Record<string, string> = {
   "export.overwriteOn": "\u8986\u76d6: \u5f00",
   "export.overwriteOff": "\u8986\u76d6: \u5173",
   "export.nlbnOverwriteHint": "\u542f\u7528\u540e\uff0c\u91cd\u65b0\u5bfc\u51fa\u53ef\u4ee5\u66ff\u6362 KiCad \u7b26\u53f7\u5e93\u4e2d\u5df2\u5b58\u5728\u7684\u7b26\u53f7\u3002",
+  "export.nlbnFillColor": "\u7b26\u53f7\u586b\u5145\u989c\u8272:",
+  "export.nlbnFillColorHint": "\u53ef\u9009\u3002\u7559\u7a7a\u5219\u4fdd\u6301 nlbn/KiCad \u9ed8\u8ba4\u586b\u5145\u884c\u4e3a\uff0c\u652f\u6301 #RRGGBB \u6216 #RRGGBBAA\u3002",
+  "export.nlbnFillColorPlaceholder": "\u793a\u4f8b: #005C8FCC",
+  "export.nlbnFillColorClear": "\u6e05\u7a7a",
+  "export.nlbnFillColorAuto": "\u4e0d\u8986\u76d6",
+  "export.nlbnFillColorInvalid": "\u8bf7\u4f7f\u7528 #RRGGBB \u6216 #RRGGBBAA \u683c\u5f0f\u3002",
   "export.example": "\u793a\u4f8b: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "\u672a\u5b89\u88c5 nlbn",
   "export.nlbnInstallHint": "\u8bf7\u5148\u5b89\u88c5 nlbn\uff0c\u5e76\u5c06\u5176\u52a0\u5165\u7cfb\u7edf PATH \u540e\u518d\u4f7f\u7528\u6b64\u529f\u80fd\u3002",
@@ -343,6 +382,8 @@ const importedUi: {
   items: ImportedSymbol[];
   error: string | null;
   notice: ExportNotice | null;
+  query: string;
+  selectedKeys: Set<string>;
 } = {
   loading: false,
   busy: false,
@@ -351,6 +392,8 @@ const importedUi: {
   items: [],
   error: null,
   notice: null,
+  query: "",
+  selectedKeys: new Set(),
 };
 
 const PATTERN_QUICK = "regex:(?m)^(C\\d{3,})$";
@@ -384,6 +427,66 @@ function escapeAttr(s: string): string {
     .replace(/'/g, "&#39;")
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;");
+}
+
+function parseOptionalHexColor(value: string): { normalized: string | null; valid: boolean } {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return { normalized: null, valid: true };
+  }
+
+  const match = /^#([0-9a-fA-F]{6}|[0-9a-fA-F]{8})$/.exec(trimmed);
+  if (!match) {
+    return { normalized: null, valid: false };
+  }
+
+  return { normalized: `#${match[1].toUpperCase()}`, valid: true };
+}
+
+function importedRowKey(item: ImportedSymbol): string {
+  return `${item.lcsc_part}\u001f${item.symbol_name}`;
+}
+
+function dedupeImportedParts(items: ImportedSymbol[]): string[] {
+  const parts = new Set<string>();
+  items.forEach((item) => {
+    parts.add(item.lcsc_part);
+  });
+  return Array.from(parts);
+}
+
+function filteredImportedItems(): ImportedSymbol[] {
+  const query = importedUi.query.trim().toLowerCase();
+  if (!query) {
+    return importedUi.items;
+  }
+
+  return importedUi.items.filter((item) => {
+    return item.lcsc_part.toLowerCase().includes(query) || item.symbol_name.toLowerCase().includes(query);
+  });
+}
+
+function selectedImportedItems(): ImportedSymbol[] {
+  if (importedUi.selectedKeys.size === 0) {
+    return [];
+  }
+
+  return importedUi.items.filter((item) => importedUi.selectedKeys.has(importedRowKey(item)));
+}
+
+function activeImportedParts(): string[] {
+  const selected = dedupeImportedParts(selectedImportedItems());
+  if (selected.length > 0) {
+    return selected;
+  }
+  return dedupeImportedParts(filteredImportedItems());
+}
+
+function pruneImportedSelection() {
+  const validKeys = new Set(importedUi.items.map((item) => importedRowKey(item)));
+  importedUi.selectedKeys = new Set(
+    Array.from(importedUi.selectedKeys).filter((key) => validKeys.has(key)),
+  );
 }
 
 function buildKeyword(): string {
@@ -427,7 +530,7 @@ function switchPage(pageName: PageName) {
   if (page) page.classList.add("active");
   if (nav) nav.classList.add("active");
 
-  if (pageName === "imported") {
+  if (pageName === "imported" && !importedUi.initialized) {
     void loadImportedSymbols();
   }
 }
@@ -582,6 +685,15 @@ function renderExporterCard(options: ExportCardOptions) {
   renderExportResult(options.tool, options.result, busy);
 }
 
+function syncExportProgressWithState(state: AppState) {
+  if (!state.nlbn_running && exportUi.nlbn.progress !== null) {
+    exportUi.nlbn.progress = null;
+  }
+  if (!state.npnp_running && exportUi.npnp.progress !== null) {
+    exportUi.npnp.progress = null;
+  }
+}
+
 function syncOptionalNlbnState(state: AppState) {
   const mode = normalizeNlbn3dPathMode(state.nlbn_path_mode);
   if (mode) {
@@ -596,8 +708,41 @@ function renderNlbn3dMode() {
   });
 }
 
+function renderNlbnFillColorDraft() {
+  const input = $("nlbn-symbol-fill-color-input") as HTMLInputElement;
+  const preview = $("nlbn-symbol-fill-color-preview");
+  const status = $("nlbn-symbol-fill-color-status");
+  const feedback = $("nlbn-symbol-fill-color-feedback");
+  const parsed = parseOptionalHexColor(input.value);
+
+  if (!parsed.valid) {
+    preview.classList.add("disabled");
+    preview.setAttribute("aria-hidden", "true");
+    preview.removeAttribute("style");
+    status.textContent = t("export.nlbnFillColorAuto");
+    feedback.textContent = t("export.nlbnFillColorInvalid");
+    feedback.className = "msg msg-error";
+    return;
+  }
+
+  feedback.textContent = "";
+  feedback.className = "msg msg-error hidden";
+  if (parsed.normalized) {
+    preview.classList.remove("disabled");
+    preview.setAttribute("aria-hidden", "false");
+    preview.style.background = parsed.normalized;
+    status.textContent = parsed.normalized;
+  } else {
+    preview.classList.add("disabled");
+    preview.setAttribute("aria-hidden", "true");
+    preview.removeAttribute("style");
+    status.textContent = t("export.nlbnFillColorAuto");
+  }
+}
+
 function renderState(state: AppState) {
   syncOptionalNlbnState(state);
+  syncExportProgressWithState(state);
 
   const kwLabel = t("status.keyword");
   const noneLabel = t("status.none");
@@ -608,6 +753,7 @@ function renderState(state: AppState) {
 
   syncInputValue("nlbn-path-input", state.nlbn_output_path);
   syncInputValue("nlbn-parallel-input", String(state.nlbn_parallel));
+  syncInputValue("nlbn-symbol-fill-color-input", state.nlbn_symbol_fill_color ?? "");
   syncInputValue("npnp-path-input", state.npnp_output_path);
   syncInputValue("npnp-library-name-input", state.npnp_library_name);
   syncInputValue("npnp-parallel-input", String(state.npnp_parallel));
@@ -619,6 +765,7 @@ function renderState(state: AppState) {
   $("btn-toggle-nlbn-overwrite").classList.toggle("active", Boolean(state.nlbn_overwrite));
   $("nlbn-overwrite-status").textContent = state.nlbn_overwrite ? t("export.overwriteOn") : t("export.overwriteOff");
   renderNlbn3dMode();
+  renderNlbnFillColorDraft();
 
   const monBtn = $("btn-toggle-monitor");
   monBtn.classList.toggle("active", state.monitoring);
@@ -754,16 +901,23 @@ function renderHistoryList(items: [string, string][]) {
 function renderImportedList(items: ImportedSymbol[]) {
   const copyLabel = t("monitor.copy");
   const copyTitle = t("imported.copyPart");
+  const queueLabel = t("imported.queuePart");
   const container = $("imported-list");
   container.innerHTML = "";
 
   items.forEach((item) => {
+    const key = importedRowKey(item);
+    const checked = importedUi.selectedKeys.has(key);
     const row = document.createElement("div");
     row.className = "imported-row";
     row.innerHTML = `
-      <span class="imported-cell imported-part">${escapeHtml(item.lcsc_part)}</span>
-      <span class="imported-cell imported-symbol">${escapeHtml(item.symbol_name)}</span>
+      <label class="imported-select">
+        <input type="checkbox" data-select-imported="${escapeAttr(key)}" ${checked ? "checked" : ""} />
+      </label>
+      <span class="imported-cell imported-part" title="${escapeAttr(item.lcsc_part)}">${escapeHtml(item.lcsc_part)}</span>
+      <span class="imported-cell imported-symbol" title="${escapeAttr(item.symbol_name)}">${escapeHtml(item.symbol_name)}</span>
       <span class="imported-actions">
+        <button data-queue-imported="${escapeAttr(item.lcsc_part)}" title="${queueLabel}">${queueLabel}</button>
         <button data-copy-imported="${escapeAttr(item.lcsc_part)}" title="${copyTitle}">${copyLabel}</button>
       </span>`;
     container.appendChild(row);
@@ -771,6 +925,12 @@ function renderImportedList(items: ImportedSymbol[]) {
 }
 
 function renderImportedPanel() {
+  const filteredItems = filteredImportedItems();
+  const selectedItems = selectedImportedItems();
+  const activeParts = activeImportedParts();
+  const totalParts = dedupeImportedParts(importedUi.items);
+  const filteredParts = dedupeImportedParts(filteredItems);
+  const selectedParts = dedupeImportedParts(selectedItems);
   const count = $("imported-count");
   const path = $("imported-scanned-path");
   const feedback = $("imported-feedback");
@@ -781,14 +941,26 @@ function renderImportedPanel() {
   const applyButton = $("btn-apply-imported-parts-save-path") as HTMLButtonElement;
   const importButton = $("btn-import-imported-parts") as HTMLButtonElement;
   const exportButton = $("btn-export-imported-parts") as HTMLButtonElement;
+  const copyButton = $("btn-copy-imported-parts") as HTMLButtonElement;
+  const queueButton = $("btn-queue-imported-parts") as HTMLButtonElement;
+  const selectVisibleButton = $("btn-select-imported-visible") as HTMLButtonElement;
+  const clearSelectionButton = $("btn-clear-imported-selection") as HTMLButtonElement;
   const controlsDisabled = importedUi.loading || importedUi.busy;
 
-  count.textContent = String(importedUi.items.length);
+  count.textContent = String(totalParts.length);
+  $("imported-total-count").textContent = String(totalParts.length);
+  $("imported-filtered-count").textContent = String(filteredParts.length);
+  $("imported-selected-count").textContent = String(selectedParts.length);
+  ($("imported-search-input") as HTMLInputElement).value = importedUi.query;
   refreshButton.disabled = controlsDisabled;
   browseButton.disabled = controlsDisabled;
   applyButton.disabled = controlsDisabled;
   importButton.disabled = controlsDisabled;
-  exportButton.disabled = controlsDisabled || importedUi.items.length === 0;
+  exportButton.disabled = controlsDisabled || activeParts.length === 0;
+  copyButton.disabled = controlsDisabled || activeParts.length === 0;
+  queueButton.disabled = controlsDisabled || activeParts.length === 0;
+  selectVisibleButton.disabled = controlsDisabled || filteredItems.length === 0;
+  clearSelectionButton.disabled = controlsDisabled || importedUi.selectedKeys.size === 0;
 
   const resolvedPath =
     importedUi.scannedPath || lastState?.nlbn_output_path || t("status.none");
@@ -818,8 +990,8 @@ function renderImportedPanel() {
     return;
   }
 
-  if (importedUi.items.length > 0) {
-    renderImportedList(importedUi.items);
+  if (filteredItems.length > 0) {
+    renderImportedList(filteredItems);
     table.classList.remove("hidden");
     empty.classList.add("hidden");
     return;
@@ -827,7 +999,7 @@ function renderImportedPanel() {
 
   table.classList.add("hidden");
   empty.classList.remove("hidden");
-  empty.textContent = t("imported.empty");
+  empty.textContent = importedUi.items.length > 0 ? t("imported.noFilterResults") : t("imported.empty");
 }
 
 async function refreshState() {
@@ -885,7 +1057,7 @@ function showMonitorSaveResult(message: string, kind?: ExportMessageKind) {
 
 function classifySaveResult(message: string): ExportMessageKind {
   const lower = message.toLowerCase();
-  if (lower.startsWith("saved") || lower.startsWith("exported")) return "success";
+  if (lower.startsWith("saved") || lower.startsWith("exported") || lower.startsWith("queued")) return "success";
   if (lower.includes("failed")) return "error";
   return "warn";
 }
@@ -928,15 +1100,27 @@ async function loadImportedSymbols() {
     importedUi.scannedPath = response.scanned_path;
     importedUi.items = response.items;
     importedUi.error = null;
+    pruneImportedSelection();
   } catch (error) {
     importedUi.loading = false;
     importedUi.initialized = true;
     importedUi.scannedPath = "";
     importedUi.items = [];
     importedUi.error = errorMessage(error);
+    importedUi.selectedKeys.clear();
   }
 
   renderImportedPanel();
+}
+
+function invalidateImportedSymbols(clearItems = false) {
+  importedUi.initialized = false;
+  importedUi.scannedPath = "";
+  importedUi.error = null;
+  if (clearItems) {
+    importedUi.items = [];
+    importedUi.selectedKeys.clear();
+  }
 }
 
 let pendingExportConfigWrite: Promise<void> = Promise.resolve();
@@ -963,9 +1147,16 @@ async function syncNlbnExportInputs() {
   const path = ($("nlbn-path-input") as HTMLInputElement).value;
   const parallelValue = ($("nlbn-parallel-input") as HTMLInputElement).value;
   const parallel = parsePositiveIntOrFallback(parallelValue, 4);
+  const colorInput = ($("nlbn-symbol-fill-color-input") as HTMLInputElement).value;
+  const parsedColor = parseOptionalHexColor(colorInput);
+
+  if (!parsedColor.valid) {
+    throw new Error(t("export.nlbnFillColorInvalid"));
+  }
 
   await invoke("set_nlbn_path", { path });
   await invoke("set_nlbn_parallel", { parallel });
+  await invoke("set_nlbn_symbol_fill_color", { color: parsedColor.normalized });
 }
 
 async function syncNpnpExportInputs() {
@@ -986,6 +1177,34 @@ async function setNlbn3dMode(mode: Nlbn3dPathMode) {
   await refreshState();
 }
 
+async function saveActiveImportedParts() {
+  const parts = activeImportedParts();
+  if (parts.length === 0) {
+    showImportedResult(t("imported.noActionableParts"), "warn");
+    return;
+  }
+
+  const path = ($("imported-parts-save-path-input") as HTMLInputElement).value;
+  await queueExportConfigWrite(async () => {
+    await invoke("set_imported_parts_save_path", { path });
+    await refreshState();
+  });
+  const result = await invoke<string>("save_lcsc_parts", { parts });
+  showImportedResult(result);
+}
+
+async function queueActiveImportedParts() {
+  const parts = activeImportedParts();
+  if (parts.length === 0) {
+    showImportedResult(t("imported.noActionableParts"), "warn");
+    return;
+  }
+
+  const result = await invoke<string>("queue_lcsc_parts", { parts });
+  showImportedResult(result);
+  await refreshState();
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   const savedLang = localStorage.getItem("seex-lang") as Lang | null;
   if (savedLang === "zh" || savedLang === "en") {
@@ -1002,8 +1221,11 @@ window.addEventListener("DOMContentLoaded", async () => {
   await listen<ExportFinishedPayload>("export-finished", async (event) => {
     finishExportProgress(event.payload);
     await refreshState();
-    if (event.payload.tool === "nlbn" && event.payload.success && currentPage === "imported") {
-      await loadImportedSymbols();
+    if (event.payload.tool === "nlbn" && event.payload.success) {
+      invalidateImportedSymbols();
+      if (currentPage === "imported") {
+        await loadImportedSymbols();
+      }
     }
   });
 
@@ -1095,8 +1317,12 @@ window.addEventListener("DOMContentLoaded", async () => {
       ($("nlbn-path-input") as HTMLInputElement).value = selected;
       await queueExportConfigWrite(async () => {
         await invoke("set_nlbn_path", { path: selected });
+        invalidateImportedSymbols(true);
         await refreshState();
       });
+      if (currentPage === "imported") {
+        await loadImportedSymbols();
+      }
     }
   });
 
@@ -1104,8 +1330,12 @@ window.addEventListener("DOMContentLoaded", async () => {
     const path = ($("nlbn-path-input") as HTMLInputElement).value;
     await queueExportConfigWrite(async () => {
       await invoke("set_nlbn_path", { path });
+      invalidateImportedSymbols(true);
       await refreshState();
     });
+    if (currentPage === "imported") {
+      await loadImportedSymbols();
+    }
   });
 
   $("btn-toggle-nlbn-terminal").addEventListener("click", async () => {
@@ -1138,6 +1368,34 @@ window.addEventListener("DOMContentLoaded", async () => {
       await invoke("set_nlbn_parallel", { parallel });
       await refreshState();
     });
+  });
+
+  $("btn-apply-nlbn-symbol-fill-color").addEventListener("click", async () => {
+    const input = $("nlbn-symbol-fill-color-input") as HTMLInputElement;
+    const parsed = parseOptionalHexColor(input.value);
+    renderNlbnFillColorDraft();
+    if (!parsed.valid) {
+      return;
+    }
+
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_symbol_fill_color", { color: parsed.normalized });
+      await refreshState();
+    });
+  });
+
+  $("btn-clear-nlbn-symbol-fill-color").addEventListener("click", async () => {
+    const input = $("nlbn-symbol-fill-color-input") as HTMLInputElement;
+    input.value = "";
+    renderNlbnFillColorDraft();
+    await queueExportConfigWrite(async () => {
+      await invoke("set_nlbn_symbol_fill_color", { color: null });
+      await refreshState();
+    });
+  });
+
+  $("nlbn-symbol-fill-color-input").addEventListener("input", () => {
+    renderNlbnFillColorDraft();
   });
 
   $("btn-npnp-export").addEventListener("click", async () => {
@@ -1223,6 +1481,43 @@ window.addEventListener("DOMContentLoaded", async () => {
     await loadImportedSymbols();
   });
 
+  $("imported-search-input").addEventListener("input", (event) => {
+    importedUi.query = (event.target as HTMLInputElement).value;
+    renderImportedPanel();
+  });
+
+  $("btn-select-imported-visible").addEventListener("click", () => {
+    filteredImportedItems().forEach((item) => {
+      importedUi.selectedKeys.add(importedRowKey(item));
+    });
+    renderImportedPanel();
+  });
+
+  $("btn-clear-imported-selection").addEventListener("click", () => {
+    importedUi.selectedKeys.clear();
+    renderImportedPanel();
+  });
+
+  $("btn-copy-imported-parts").addEventListener("click", async () => {
+    const parts = activeImportedParts();
+    if (parts.length === 0) return;
+    await invoke("copy_to_clipboard", { text: parts.join("\n") });
+    showImportedResult(t("imported.copied"), "success");
+  });
+
+  $("btn-queue-imported-parts").addEventListener("click", async () => {
+    await runImportedAction(async () => {
+      importedUi.notice = null;
+      renderImportedPanel();
+
+      try {
+        await queueActiveImportedParts();
+      } catch (error) {
+        showImportedResult(errorMessage(error), "error");
+      }
+    });
+  });
+
   $("btn-apply-imported-parts-save-path").addEventListener("click", async () => {
     if (importedUi.loading || importedUi.busy) return;
     importedUi.notice = null;
@@ -1253,13 +1548,7 @@ window.addEventListener("DOMContentLoaded", async () => {
       renderImportedPanel();
 
       try {
-        const path = ($("imported-parts-save-path-input") as HTMLInputElement).value;
-        await queueExportConfigWrite(async () => {
-          await invoke("set_imported_parts_save_path", { path });
-          await refreshState();
-        });
-        const result = await invoke<string>("save_imported_parts");
-        showImportedResult(result);
+        await saveActiveImportedParts();
       } catch (error) {
         showImportedResult(errorMessage(error), "error");
       }
@@ -1388,6 +1677,20 @@ window.addEventListener("DOMContentLoaded", async () => {
 
   showHistory = true;
 
+  document.addEventListener("change", (e) => {
+    const target = e.target as HTMLElement;
+    if (target instanceof HTMLInputElement && target.matches("input[data-select-imported]")) {
+      const key = target.getAttribute("data-select-imported");
+      if (!key) return;
+      if (target.checked) {
+        importedUi.selectedKeys.add(key);
+      } else {
+        importedUi.selectedKeys.delete(key);
+      }
+      renderImportedPanel();
+    }
+  });
+
   document.addEventListener("click", async (e) => {
     const target = e.target as HTMLElement;
 
@@ -1411,6 +1714,20 @@ window.addEventListener("DOMContentLoaded", async () => {
       await invoke("copy_to_clipboard", { text: importedCopy });
       importedUi.notice = { kind: "success", message: t("imported.copied") };
       renderImportedPanel();
+      return;
+    }
+
+    const importedQueue = target.getAttribute("data-queue-imported");
+    if (importedQueue !== null) {
+      await runImportedAction(async () => {
+        try {
+          const result = await invoke<string>("queue_lcsc_parts", { parts: [importedQueue] });
+          showImportedResult(result);
+          await refreshState();
+        } catch (error) {
+          showImportedResult(errorMessage(error), "error");
+        }
+      });
       return;
     }
 

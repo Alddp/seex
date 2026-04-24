@@ -188,8 +188,18 @@ fn save_imported_parts(app: State<ManagedApp>) -> String {
 }
 
 #[tauri::command]
+fn save_lcsc_parts(app: State<ManagedApp>, parts: Vec<String>) -> String {
+    app.controller.save_lcsc_parts(parts)
+}
+
+#[tauri::command]
 fn import_imported_parts(app: State<ManagedApp>) -> String {
     app.controller.import_imported_parts()
+}
+
+#[tauri::command]
+fn queue_lcsc_parts(app: State<ManagedApp>, parts: Vec<String>) -> String {
+    app.controller.queue_lcsc_parts(parts)
 }
 
 #[tauri::command]
@@ -252,6 +262,14 @@ fn set_nlbn_path_mode(app: State<ManagedApp>, path_mode: NlbnPathMode) {
 fn set_nlbn_overwrite(app: State<ManagedApp>, overwrite: bool) {
     if let Ok(mut m) = app.controller.state().lock() {
         m.set_nlbn_overwrite(overwrite);
+    }
+    save_config(&app);
+}
+
+#[tauri::command]
+fn set_nlbn_symbol_fill_color(app: State<ManagedApp>, color: Option<String>) {
+    if let Ok(mut m) = app.controller.state().lock() {
+        m.set_nlbn_symbol_fill_color(color);
     }
     save_config(&app);
 }
@@ -424,7 +442,9 @@ pub fn run() {
             save_history,
             save_matched,
             save_imported_parts,
+            save_lcsc_parts,
             import_imported_parts,
+            queue_lcsc_parts,
             set_history_save_path,
             set_matched_save_path,
             set_imported_parts_save_path,
@@ -433,6 +453,7 @@ pub fn run() {
             set_nlbn_parallel,
             set_nlbn_path_mode,
             set_nlbn_overwrite,
+            set_nlbn_symbol_fill_color,
             set_npnp_path,
             set_npnp_mode,
             set_npnp_merge,

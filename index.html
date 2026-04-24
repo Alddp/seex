@@ -142,131 +142,149 @@
             <h2 data-i18n="nav.export">Export</h2>
             <span class="page-desc" data-i18n="export.desc">Component export integrations</span>
           </div>
-          <div class="page-body">
-            <div class="card">
-              <div class="card-title" data-i18n="export.nlbnExport">nlbn Export</div>
-              <div class="card-subtitle hint" data-i18n="export.nlbnFor">nlbn Export for KiCad</div>
-              <div class="row">
-                <span id="nlbn-export-count" class="hint">0 items ready</span>
-                <div class="spacer"></div>
-                <button class="btn-accent" id="btn-nlbn-export" disabled data-i18n="export.exportNlbn">Export nlbn</button>
-              </div>
-              <div id="nlbn-progress" class="export-progress hidden" aria-live="polite">
-                <div class="export-progress-head">
-                  <span id="nlbn-progress-message" class="export-progress-message"></span>
-                  <span id="nlbn-progress-meta" class="export-progress-meta"></span>
-                </div>
-                <div class="export-progress-track">
-                  <div id="nlbn-progress-bar" class="export-progress-bar"></div>
-                </div>
-              </div>
-              <div id="nlbn-status" class="msg msg-warn hidden"></div>
-              <div id="nlbn-result" class="msg msg-info hidden"></div>
-              <div id="nlbn-not-found" class="nlbn-prompt hidden">
-                <div class="nlbn-prompt-icon">!</div>
-                <div class="nlbn-prompt-text">
-                  <strong data-i18n="export.nlbnNotFound">nlbn is not installed</strong>
-                  <p data-i18n="export.nlbnInstallHint">Install nlbn and add it to your system PATH to use this feature.</p>
-                  <div class="tech-chip" data-url="https://github.com/linkyourbin/nlbn" style="margin-top:8px;display:inline-flex;">
-                    <span>github.com/linkyourbin/nlbn</span>
+          <div class="page-body export-body">
+            <div class="export-grid">
+              <div class="export-column">
+                <div class="card">
+                  <div class="card-title" data-i18n="export.nlbnExport">nlbn Export</div>
+                  <div class="card-subtitle hint" data-i18n="export.nlbnFor">nlbn Export for KiCad</div>
+                  <div class="row">
+                    <span id="nlbn-export-count" class="hint">0 items ready</span>
+                    <div class="spacer"></div>
+                    <button class="btn-accent" id="btn-nlbn-export" disabled data-i18n="export.exportNlbn">Export nlbn</button>
+                  </div>
+                  <div id="nlbn-progress" class="export-progress hidden" aria-live="polite">
+                    <div class="export-progress-head">
+                      <span id="nlbn-progress-message" class="export-progress-message"></span>
+                      <span id="nlbn-progress-meta" class="export-progress-meta"></span>
+                    </div>
+                    <div class="export-progress-track">
+                      <div id="nlbn-progress-bar" class="export-progress-bar"></div>
+                    </div>
+                  </div>
+                  <div id="nlbn-status" class="msg msg-warn hidden"></div>
+                  <div id="nlbn-result" class="msg msg-info hidden"></div>
+                  <div id="nlbn-not-found" class="nlbn-prompt hidden">
+                    <div class="nlbn-prompt-icon">!</div>
+                    <div class="nlbn-prompt-text">
+                      <strong data-i18n="export.nlbnNotFound">nlbn is not installed</strong>
+                      <p data-i18n="export.nlbnInstallHint">Install nlbn and add it to your system PATH to use this feature.</p>
+                      <div class="tech-chip" data-url="https://github.com/linkyourbin/nlbn" style="margin-top:8px;display:inline-flex;">
+                        <span>github.com/linkyourbin/nlbn</span>
+                      </div>
+                    </div>
                   </div>
                 </div>
-              </div>
-            </div>
 
-            <div class="card">
-              <div class="card-title" data-i18n="export.nlbnConfig">nlbn Configuration</div>
-              <label class="hint" data-i18n="export.exportDir">Export directory:</label>
-              <div class="row" style="margin-top:4px;">
-                <input type="text" id="nlbn-path-input" />
-                <button class="btn-outline btn-sm" id="btn-browse-nlbn-folder" data-i18n="export.browse">Browse</button>
-                <button class="btn-primary btn-sm" id="btn-apply-nlbn-path" data-i18n="export.apply">Apply</button>
-              </div>
-              <div class="row" style="margin-top:10px;">
-                <button class="btn-outline btn-sm" id="btn-toggle-nlbn-terminal" data-i18n="export.toggleTerminal">Toggle Terminal</button>
-                <span id="nlbn-terminal-status" class="hint"></span>
-              </div>
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.nlbn3dPathMode">3D path mode:</label>
-              <div class="row" style="margin-top:4px;">
-                <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-auto" data-i18n="export.nlbn3dModeAuto">Auto</button>
-                <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-project" data-i18n="export.nlbn3dModeProject">KiCad Project</button>
-                <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-library" data-i18n="export.nlbn3dModeLibrary">Library Relative</button>
-              </div>
-              <div id="nlbn-3d-mode-hint" class="hint" style="margin-top:6px;" data-i18n="export.nlbn3dModeHint">Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.</div>
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.nlbnOverwrite">Overwrite existing symbol:</label>
-              <div class="row" style="margin-top:4px;">
-                <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite" data-i18n="export.nlbnOverwriteToggle">Overwrite Existing</button>
-                <span id="nlbn-overwrite-status" class="hint"></span>
-              </div>
-              <div class="hint" style="margin-top:6px;" data-i18n="export.nlbnOverwriteHint">Re-export can replace existing symbols in the KiCad symbol library when enabled.</div>
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.parallel">Parallel jobs:</label>
-              <div class="row" style="margin-top:4px;">
-                <input type="text" id="nlbn-parallel-input" />
-                <button class="btn-primary btn-sm" id="btn-apply-nlbn-parallel" data-i18n="export.apply">Apply</button>
-              </div>
-              <div class="hint" style="margin-top:6px;" data-i18n="export.nlbnParallelHint">nlbn requires --parallel to be at least 1.</div>
-              <div class="hint" style="margin-top:6px;" data-i18n="export.example">Example: C:\Users\xxx\lib</div>
-            </div>
-
-            <div class="card">
-              <div class="card-title" data-i18n="export.npnpExport">npnp Export</div>
-              <div class="card-subtitle hint" data-i18n="export.npnpFor">npnp Export for Altium Designer</div>
-              <div class="row">
-                <span id="npnp-export-count" class="hint">0 items ready</span>
-                <div class="spacer"></div>
-                <button class="btn-accent" id="btn-npnp-export" disabled data-i18n="export.exportNpnp">Export npnp</button>
-              </div>
-              <div id="npnp-progress" class="export-progress hidden" aria-live="polite">
-                <div class="export-progress-head">
-                  <span id="npnp-progress-message" class="export-progress-message"></span>
-                  <span id="npnp-progress-meta" class="export-progress-meta"></span>
-                </div>
-                <div class="export-progress-track">
-                  <div id="npnp-progress-bar" class="export-progress-bar"></div>
+                <div class="card">
+                  <div class="card-title" data-i18n="export.npnpExport">npnp Export</div>
+                  <div class="card-subtitle hint" data-i18n="export.npnpFor">npnp Export for Altium Designer</div>
+                  <div class="row">
+                    <span id="npnp-export-count" class="hint">0 items ready</span>
+                    <div class="spacer"></div>
+                    <button class="btn-accent" id="btn-npnp-export" disabled data-i18n="export.exportNpnp">Export npnp</button>
+                  </div>
+                  <div id="npnp-progress" class="export-progress hidden" aria-live="polite">
+                    <div class="export-progress-head">
+                      <span id="npnp-progress-message" class="export-progress-message"></span>
+                      <span id="npnp-progress-meta" class="export-progress-meta"></span>
+                    </div>
+                    <div class="export-progress-track">
+                      <div id="npnp-progress-bar" class="export-progress-bar"></div>
+                    </div>
+                  </div>
+                  <div id="npnp-status" class="msg msg-warn hidden"></div>
+                  <div id="npnp-result" class="msg msg-info hidden"></div>
                 </div>
               </div>
-              <div id="npnp-status" class="msg msg-warn hidden"></div>
-              <div id="npnp-result" class="msg msg-info hidden"></div>
-            </div>
 
-            <div class="card">
-              <div class="card-title" data-i18n="export.npnpConfig">npnp Configuration</div>
-              <label class="hint" data-i18n="export.exportDir">Export directory:</label>
-              <div class="row" style="margin-top:4px;">
-                <input type="text" id="npnp-path-input" />
-                <button class="btn-outline btn-sm" id="btn-browse-npnp-folder" data-i18n="export.browse">Browse</button>
-                <button class="btn-primary btn-sm" id="btn-apply-npnp-path" data-i18n="export.apply">Apply</button>
-              </div>
+              <div class="export-column">
+                <div class="card">
+                  <div class="card-title" data-i18n="export.nlbnConfig">nlbn Configuration</div>
+                  <label class="hint" data-i18n="export.exportDir">Export directory:</label>
+                  <div class="row setting-row">
+                    <input type="text" id="nlbn-path-input" />
+                    <button class="btn-outline btn-sm" id="btn-browse-nlbn-folder" data-i18n="export.browse">Browse</button>
+                    <button class="btn-primary btn-sm" id="btn-apply-nlbn-path" data-i18n="export.apply">Apply</button>
+                  </div>
+                  <div class="row setting-row">
+                    <button class="btn-outline btn-sm" id="btn-toggle-nlbn-terminal" data-i18n="export.toggleTerminal">Toggle Terminal</button>
+                    <span id="nlbn-terminal-status" class="hint"></span>
+                  </div>
+                  <label class="hint setting-label" data-i18n="export.nlbn3dPathMode">3D path mode:</label>
+                  <div class="row setting-row">
+                    <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-auto" data-i18n="export.nlbn3dModeAuto">Auto</button>
+                    <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-project" data-i18n="export.nlbn3dModeProject">KiCad Project</button>
+                    <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-library" data-i18n="export.nlbn3dModeLibrary">Library Relative</button>
+                  </div>
+                  <div id="nlbn-3d-mode-hint" class="hint setting-hint" data-i18n="export.nlbn3dModeHint">Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.</div>
+                  <label class="hint setting-label" data-i18n="export.nlbnOverwrite">Overwrite existing symbol:</label>
+                  <div class="row setting-row">
+                    <button class="btn-pill btn-sm" id="btn-toggle-nlbn-overwrite" data-i18n="export.nlbnOverwriteToggle">Overwrite Existing</button>
+                    <span id="nlbn-overwrite-status" class="hint"></span>
+                  </div>
+                  <div class="hint setting-hint" data-i18n="export.nlbnOverwriteHint">Re-export can replace existing symbols in the KiCad symbol library when enabled.</div>
+                  <label class="hint setting-label" data-i18n="export.nlbnFillColor">Symbol fill color:</label>
+                  <div class="row setting-row">
+                    <div class="color-input-wrap">
+                      <span id="nlbn-symbol-fill-color-preview" class="color-swatch disabled" aria-hidden="true"></span>
+                      <input type="text" id="nlbn-symbol-fill-color-input" data-i18n-placeholder="export.nlbnFillColorPlaceholder" />
+                    </div>
+                    <button class="btn-outline btn-sm" id="btn-clear-nlbn-symbol-fill-color" data-i18n="export.nlbnFillColorClear">Clear</button>
+                    <button class="btn-primary btn-sm" id="btn-apply-nlbn-symbol-fill-color" data-i18n="export.apply">Apply</button>
+                  </div>
+                  <div id="nlbn-symbol-fill-color-status" class="hint setting-hint" data-i18n="export.nlbnFillColorAuto">No override</div>
+                  <div id="nlbn-symbol-fill-color-feedback" class="msg msg-error hidden"></div>
+                  <div class="hint setting-hint" data-i18n="export.nlbnFillColorHint">Optional. Leave blank to keep nlbn/KiCad defaults. Supports #RRGGBB or #RRGGBBAA.</div>
+                  <label class="hint setting-label" data-i18n="export.parallel">Parallel jobs:</label>
+                  <div class="row setting-row">
+                    <input type="text" id="nlbn-parallel-input" />
+                    <button class="btn-primary btn-sm" id="btn-apply-nlbn-parallel" data-i18n="export.apply">Apply</button>
+                  </div>
+                  <div class="hint setting-hint" data-i18n="export.nlbnParallelHint">nlbn requires --parallel to be at least 1.</div>
+                  <div class="hint setting-hint" data-i18n="export.example">Example: C:\Users\xxx\lib</div>
+                </div>
 
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.npnpMode">Export mode:</label>
-              <div class="row" style="margin-top:4px;">
-                <button class="btn-pill btn-sm" id="btn-npnp-mode-full" data-i18n="export.full">Full</button>
-                <button class="btn-pill btn-sm" id="btn-npnp-mode-schlib" data-i18n="export.schlib">SchLib</button>
-                <button class="btn-pill btn-sm" id="btn-npnp-mode-pcblib" data-i18n="export.pcblib">PcbLib</button>
-              </div>
+                <div class="card">
+                  <div class="card-title" data-i18n="export.npnpConfig">npnp Configuration</div>
+                  <label class="hint" data-i18n="export.exportDir">Export directory:</label>
+                  <div class="row setting-row">
+                    <input type="text" id="npnp-path-input" />
+                    <button class="btn-outline btn-sm" id="btn-browse-npnp-folder" data-i18n="export.browse">Browse</button>
+                    <button class="btn-primary btn-sm" id="btn-apply-npnp-path" data-i18n="export.apply">Apply</button>
+                  </div>
 
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.npnpOptions">Batch options:</label>
-              <div class="row" style="margin-top:4px;">
-                <button class="btn-pill btn-sm" id="btn-toggle-npnp-merge" data-i18n="export.merge">Merge</button>
-                <button class="btn-pill btn-sm" id="btn-toggle-npnp-append" data-i18n="export.mergeAppend">Merge&amp;Append</button>
-                <button class="btn-pill btn-sm" id="btn-toggle-npnp-continue-on-error" data-i18n="export.continueOnError">Continue On Error</button>
-                <button class="btn-pill btn-sm" id="btn-toggle-npnp-force" data-i18n="export.force">Force</button>
-              </div>
-              <div class="hint" style="margin-top:6px;" data-i18n="export.mergeAppendHint">Merge&amp;Append extends an existing merged library and skips duplicate IDs (requires Merge).</div>
+                  <label class="hint setting-label" data-i18n="export.npnpMode">Export mode:</label>
+                  <div class="row setting-row">
+                    <button class="btn-pill btn-sm" id="btn-npnp-mode-full" data-i18n="export.full">Full</button>
+                    <button class="btn-pill btn-sm" id="btn-npnp-mode-schlib" data-i18n="export.schlib">SchLib</button>
+                    <button class="btn-pill btn-sm" id="btn-npnp-mode-pcblib" data-i18n="export.pcblib">PcbLib</button>
+                  </div>
 
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.libraryName">Library name:</label>
-              <div class="row" style="margin-top:4px;">
-                <input type="text" id="npnp-library-name-input" />
-                <button class="btn-primary btn-sm" id="btn-apply-npnp-library-name" data-i18n="export.apply">Apply</button>
-              </div>
-              <div class="hint" style="margin-top:6px;" data-i18n="export.libraryNameHint">Used only when Merge is enabled.</div>
+                  <label class="hint setting-label" data-i18n="export.npnpOptions">Batch options:</label>
+                  <div class="row setting-row">
+                    <button class="btn-pill btn-sm" id="btn-toggle-npnp-merge" data-i18n="export.merge">Merge</button>
+                    <button class="btn-pill btn-sm" id="btn-toggle-npnp-append" data-i18n="export.mergeAppend">Merge&amp;Append</button>
+                    <button class="btn-pill btn-sm" id="btn-toggle-npnp-continue-on-error" data-i18n="export.continueOnError">Continue On Error</button>
+                    <button class="btn-pill btn-sm" id="btn-toggle-npnp-force" data-i18n="export.force">Force</button>
+                  </div>
+                  <div class="hint setting-hint" data-i18n="export.mergeAppendHint">Merge&amp;Append extends an existing merged library and skips duplicate IDs (requires Merge).</div>
 
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.parallel">Parallel jobs:</label>
-              <div class="row" style="margin-top:4px;">
-                <input type="text" id="npnp-parallel-input" />
-                <button class="btn-primary btn-sm" id="btn-apply-npnp-parallel" data-i18n="export.apply">Apply</button>
+                  <label class="hint setting-label" data-i18n="export.libraryName">Library name:</label>
+                  <div class="row setting-row">
+                    <input type="text" id="npnp-library-name-input" />
+                    <button class="btn-primary btn-sm" id="btn-apply-npnp-library-name" data-i18n="export.apply">Apply</button>
+                  </div>
+                  <div class="hint setting-hint" data-i18n="export.libraryNameHint">Used only when Merge is enabled.</div>
+
+                  <label class="hint setting-label" data-i18n="export.parallel">Parallel jobs:</label>
+                  <div class="row setting-row">
+                    <input type="text" id="npnp-parallel-input" />
+                    <button class="btn-primary btn-sm" id="btn-apply-npnp-parallel" data-i18n="export.apply">Apply</button>
+                  </div>
+                  <div class="hint setting-hint" data-i18n="export.npnpParallelHint">Parallel jobs apply only to non-merged npnp exports and must be at least 1.</div>
+                </div>
               </div>
-              <div class="hint" style="margin-top:6px;" data-i18n="export.npnpParallelHint">Parallel jobs apply only to non-merged npnp exports and must be at least 1.</div>
             </div>
           </div>
         </section>
@@ -276,27 +294,51 @@
             <h2 data-i18n="nav.imported">Imported</h2>
             <span class="page-desc" data-i18n="imported.desc">Browse imported nlbn symbols from the active KiCad library</span>
           </div>
-          <div class="page-body">
-            <div class="card card-full">
-              <div class="card-title-row">
+          <div class="page-body imported-body">
+            <div class="card imported-summary-card">
+              <div class="card-title-row imported-summary-top">
                 <span class="card-title accent"><span data-i18n="imported.title">Imported Symbols</span> <span class="badge" id="imported-count">0</span></span>
                 <div class="row imported-toolbar">
                   <button class="btn-outline btn-sm" id="btn-refresh-imported" data-i18n="imported.refresh">Refresh</button>
-                  <button class="btn-outline btn-sm" id="btn-import-imported-parts" data-i18n="imported.importParts">Import Parts</button>
-                  <button class="btn-primary btn-sm" id="btn-export-imported-parts" data-i18n="imported.exportParts">Export Parts</button>
+                  <button class="btn-outline btn-sm" id="btn-select-imported-visible" data-i18n="imported.selectFiltered">Select Filtered</button>
+                  <button class="btn-outline btn-sm" id="btn-clear-imported-selection" data-i18n="imported.clearSelection">Clear Selection</button>
+                  <button class="btn-outline btn-sm" id="btn-copy-imported-parts" data-i18n="imported.copyParts">Copy Parts</button>
+                  <button class="btn-accent btn-sm" id="btn-queue-imported-parts" data-i18n="imported.queueParts">Queue Parts</button>
                 </div>
               </div>
               <div id="imported-scanned-path" class="hint"></div>
-              <label class="hint" style="display:block;margin-top:12px;" data-i18n="imported.exportFile">Parts file:</label>
-              <div class="row" style="margin-top:4px;">
-                <input type="text" id="imported-parts-save-path-input" />
-                <button class="btn-outline btn-sm" id="btn-browse-imported-parts-save-path" data-i18n="export.browse">Browse</button>
-                <button class="btn-primary btn-sm" id="btn-apply-imported-parts-save-path" data-i18n="export.apply">Apply</button>
+              <div class="imported-stats">
+                <span class="stat-chip"><span data-i18n="imported.total">Total</span><strong id="imported-total-count">0</strong></span>
+                <span class="stat-chip"><span data-i18n="imported.filtered">Filtered</span><strong id="imported-filtered-count">0</strong></span>
+                <span class="stat-chip"><span data-i18n="imported.selected">Selected</span><strong id="imported-selected-count">0</strong></span>
               </div>
-              <div class="hint" style="margin-top:6px;" data-i18n="imported.exportHint">Used by Export Parts and Import Parts.</div>
+              <div class="imported-control-grid">
+                <div class="imported-control">
+                  <label class="hint" data-i18n="imported.search">Search:</label>
+                  <input type="text" id="imported-search-input" data-i18n-placeholder="imported.searchPlaceholder" />
+                </div>
+                <div class="imported-control imported-file-control">
+                  <label class="hint" data-i18n="imported.exportFile">Parts file:</label>
+                  <div class="row setting-row">
+                    <input type="text" id="imported-parts-save-path-input" />
+                    <button class="btn-outline btn-sm" id="btn-browse-imported-parts-save-path" data-i18n="export.browse">Browse</button>
+                    <button class="btn-primary btn-sm" id="btn-apply-imported-parts-save-path" data-i18n="export.apply">Apply</button>
+                  </div>
+                </div>
+              </div>
+              <div class="hint imported-meta-hint" data-i18n="imported.exportHint">Used by Export Parts and Import Parts.</div>
+              <div class="hint imported-meta-hint" data-i18n="imported.selectionHint">Copy, queue, and export use selected parts first; if nothing is selected, the current filtered list is used.</div>
+              <div class="row imported-toolbar imported-file-actions">
+                <button class="btn-outline btn-sm" id="btn-import-imported-parts" data-i18n="imported.importParts">Import Parts</button>
+                <button class="btn-primary btn-sm" id="btn-export-imported-parts" data-i18n="imported.exportParts">Export Parts</button>
+              </div>
               <div id="imported-feedback" class="msg msg-info hidden"></div>
+            </div>
+
+            <div class="card card-full imported-browser-card">
               <div id="imported-table" class="imported-table hidden">
                 <div class="imported-head">
+                  <span></span>
                   <span data-i18n="imported.lcscPart">LCSC Part</span>
                   <span data-i18n="imported.symbolName">Symbol Name</span>
                   <span data-i18n="imported.actions">Actions</span>
