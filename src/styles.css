@@ -1053,13 +1053,35 @@ button {
   display: flex;
   align-items: center;
   gap: 12px;
+  flex-wrap: wrap;
   border-top: 1px solid var(--border);
   color: var(--text-3);
   flex-shrink: 0;
 }
 
-.status-dot {
+.status-toggle {
   margin-left: auto;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  padding: 4px 12px;
+  font-size: 12px;
+  border-radius: var(--radius-pill);
+}
+
+.status-toggle:hover {
+  border-color: var(--primary);
+  color: var(--primary);
+  background: var(--primary-lighter);
+}
+
+.status-toggle.active {
+  background: var(--primary-light);
+  border-color: var(--primary);
+  color: var(--primary);
+}
+
+.status-dot {
   color: var(--success);
   font-weight: 600;
 }

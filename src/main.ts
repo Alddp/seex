@@ -26,6 +26,7 @@ interface AppState {
   npnp_continue_on_error: boolean;
   npnp_force: boolean;
   monitoring: boolean;
+  always_on_top: boolean;
   history_count: number;
   matched_count: number;
   history_save_path: string;
@@ -105,6 +106,8 @@ const enTranslations: Record<string, string> = {
   "nav.language": "Language",
   "nav.about": "About",
   "status.listening": "Listening",
+  "status.alwaysOnTopOn": "Always on Top: ON",
+  "status.alwaysOnTopOff": "Always on Top: OFF",
   "monitor.matchMode": "Match Mode",
   "monitor.quickId": "Quick ID",
   "monitor.fullInfo": "Full Info",
@@ -233,6 +236,8 @@ const zhTranslations: Record<string, string> = {
   "nav.language": "\u8bed\u8a00",
   "nav.about": "\u5173\u4e8e",
   "status.listening": "\u76d1\u542c\u4e2d",
+  "status.alwaysOnTopOn": "\u7a97\u53e3\u7f6e\u9876: \u5f00",
+  "status.alwaysOnTopOff": "\u7a97\u53e3\u7f6e\u9876: \u5173",
   "monitor.matchMode": "\u5339\u914d\u6a21\u5f0f",
   "monitor.quickId": "\u5feb\u901f ID",
   "monitor.fullInfo": "\u5b8c\u6574\u4fe1\u606f",
@@ -750,6 +755,10 @@ function renderState(state: AppState) {
   $("status-keyword").textContent = `${kwLabel} ${state.keyword || noneLabel}`;
   $("status-counts").textContent = `H: ${state.history_count} | M: ${state.matched_count}`;
   $("monitor-status").textContent = `${kwLabel} ${state.keyword ? "LCSC" : noneLabel} | H: ${state.history_count} | M: ${state.matched_count}`;
+  $("btn-toggle-always-on-top").textContent = state.always_on_top
+    ? t("status.alwaysOnTopOn")
+    : t("status.alwaysOnTopOff");
+  $("btn-toggle-always-on-top").classList.toggle("active", state.always_on_top);
 
   syncInputValue("nlbn-path-input", state.nlbn_output_path);
   syncInputValue("nlbn-parallel-input", String(state.nlbn_parallel));
@@ -1248,6 +1257,12 @@ window.addEventListener("DOMContentLoaded", async () => {
   $("btn-lang-zh").addEventListener("click", () => {
     applyLanguage("zh");
     void refreshState();
+  });
+
+  $("btn-toggle-always-on-top").addEventListener("click", async () => {
+    const next = !(lastState?.always_on_top ?? false);
+    await invoke("set_window_always_on_top", { alwaysOnTop: next });
+    await refreshState();
   });
 
   $("btn-match-quick").addEventListener("click", async () => {

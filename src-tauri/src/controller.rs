@@ -336,6 +336,7 @@ pub fn snapshot_config(state: &MonitorState) -> AppConfig {
             force: state.npnp_force,
         },
         monitor: MonitorConfig {
+            always_on_top: state.always_on_top,
             history_save_path: state.history_save_path.clone(),
             matched_save_path: state.matched_save_path.clone(),
             imported_parts_save_path: state.imported_parts_save_path.clone(),
@@ -358,6 +359,7 @@ fn apply_config(state: &mut MonitorState, config: &AppConfig, paths: &AppPaths) 
     state.set_npnp_parallel(config.npnp.parallel);
     state.set_npnp_continue_on_error(config.npnp.continue_on_error);
     state.set_npnp_force(config.npnp.force);
+    state.always_on_top = config.monitor.always_on_top;
     state.set_history_save_path(config.monitor.history_save_path.clone(), paths);
     state.set_matched_save_path(config.monitor.matched_save_path.clone(), paths);
     state.set_imported_parts_save_path(config.monitor.imported_parts_save_path.clone(), paths);

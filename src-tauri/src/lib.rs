@@ -39,6 +39,7 @@ pub struct AppState {
     pub npnp_continue_on_error: bool,
     pub npnp_force: bool,
     pub monitoring: bool,
+    pub always_on_top: bool,
     pub history_count: usize,
     pub matched_count: usize,
     pub history_save_path: String,
@@ -79,6 +80,7 @@ fn build_app_state(controller: &AppController) -> AppState {
             npnp_continue_on_error: m.npnp_continue_on_error,
             npnp_force: m.npnp_force,
             monitoring: m.monitoring,
+            always_on_top: m.always_on_top,
             history_save_path: m.history_save_path.clone(),
             matched_save_path: m.matched_save_path.clone(),
             imported_parts_save_path: m.imported_parts_save_path.clone(),
@@ -107,6 +109,7 @@ fn build_app_state(controller: &AppController) -> AppState {
             npnp_continue_on_error: defaults.npnp.continue_on_error,
             npnp_force: defaults.npnp.force,
             monitoring: true,
+            always_on_top: defaults.monitor.always_on_top,
             history_count: 0,
             matched_count: 0,
             history_save_path: controller.paths().default_history_save_path_string(),
@@ -339,6 +342,26 @@ fn set_npnp_force(app: State<ManagedApp>, force: bool) {
 }
 
 #[tauri::command]
+fn set_window_always_on_top(
+    app: State<ManagedApp>,
+    app_handle: AppHandle,
+    always_on_top: bool,
+) -> Result<(), String> {
+    let window = app_handle
+        .get_webview_window("main")
+        .ok_or_else(|| "Main window not found".to_string())?;
+    window
+        .set_always_on_top(always_on_top)
+        .map_err(|err| err.to_string())?;
+
+    if let Ok(mut m) = app.controller.state().lock() {
+        m.always_on_top = always_on_top;
+    }
+    save_config(&app);
+    Ok(())
+}
+
+#[tauri::command]
 fn check_nlbn() -> Result<String, String> {
     nlbn::check_installation()
 }
@@ -429,7 +452,15 @@ pub fn run() {
                 }),
             )
             .map_err(std::io::Error::other)?;
+            let always_on_top = controller
+                .state()
+                .lock()
+                .map(|state| state.always_on_top)
+                .unwrap_or(false);
             app.manage(ManagedApp { controller });
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.set_always_on_top(always_on_top);
+            }
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -462,6 +493,7 @@ pub fn run() {
             set_npnp_parallel,
             set_npnp_continue_on_error,
             set_npnp_force,
+            set_window_always_on_top,
             check_nlbn,
             nlbn_export,
             npnp_export,

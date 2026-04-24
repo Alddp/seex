@@ -16,7 +16,7 @@
         "title": "SeEx",
         "width": 820,
         "height": 660,
-        "alwaysOnTop": true,
+        "alwaysOnTop": false,
         "resizable": true
       }
     ],

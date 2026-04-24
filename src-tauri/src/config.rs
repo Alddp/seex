@@ -68,6 +68,7 @@ mod tests {
     "force": true
   },
   "monitor": {
+    "always_on_top": true,
     "history_save_path": "/tmp/history.txt",
     "matched_save_path": "/tmp/matched.txt",
     "imported_parts_save_path": "/tmp/imported-parts.txt"
@@ -85,6 +86,7 @@ mod tests {
         assert_eq!(config.npnp.output_path, "/tmp/npnp");
         assert_eq!(config.npnp.mode, "pcblib");
         assert!(config.npnp.merge);
+        assert!(config.monitor.always_on_top);
         assert_eq!(config.monitor.history_save_path, "/tmp/history.txt");
         assert_eq!(
             config.monitor.imported_parts_save_path,
@@ -108,6 +110,7 @@ mod tests {
 
         let saved = fs::read_to_string(paths.config_file()).unwrap();
         assert!(!saved.contains("symbol_fill_color"));
+        assert!(saved.contains("\"always_on_top\""));
         assert!(saved.contains("\"imported_parts_save_path\""));
 
         let _ = fs::remove_dir_all(root);
@@ -136,6 +139,7 @@ impl Default for AppConfig {
 #[derive(Clone, Serialize, Deserialize, Default)]
 #[serde(default)]
 pub struct MonitorConfig {
+    pub always_on_top: bool,
     pub history_save_path: String,
     pub matched_save_path: String,
     pub imported_parts_save_path: String,
