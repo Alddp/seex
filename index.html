@@ -182,6 +182,13 @@
                 <button class="btn-outline btn-sm" id="btn-toggle-nlbn-terminal" data-i18n="export.toggleTerminal">Toggle Terminal</button>
                 <span id="nlbn-terminal-status" class="hint"></span>
               </div>
+              <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.nlbn3dPathMode">3D path mode:</label>
+              <div class="row" style="margin-top:4px;">
+                <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-auto" data-i18n="export.nlbn3dModeAuto">Auto</button>
+                <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-project" data-i18n="export.nlbn3dModeProject">KiCad Project</button>
+                <button class="btn-pill btn-sm" id="btn-nlbn-3d-mode-library" data-i18n="export.nlbn3dModeLibrary">Library Relative</button>
+              </div>
+              <div id="nlbn-3d-mode-hint" class="hint" style="margin-top:6px;" data-i18n="export.nlbn3dModeHint">Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.</div>
               <label class="hint" style="display:block;margin-top:12px;" data-i18n="export.parallel">Parallel jobs:</label>
               <div class="row" style="margin-top:4px;">
                 <input type="text" id="nlbn-parallel-input" />

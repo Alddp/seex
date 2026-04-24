@@ -13,6 +13,8 @@ use std::os::unix::fs::PermissionsExt;
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
 
+use crate::app_paths::AppPaths;
+use crate::config::NlbnPathMode;
 use crate::monitor::MonitorState;
 
 #[derive(Clone, Serialize)]
@@ -36,6 +38,7 @@ pub struct ExportRequest {
     pub output_path: String,
     pub show_terminal: bool,
     pub parallel: usize,
+    pub path_mode: NlbnPathMode,
 }
 
 pub fn check_installation() -> Result<String, String> {
@@ -57,7 +60,12 @@ pub fn check_installation() -> Result<String, String> {
     }
 }
 
-pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_handle: AppHandle) {
+pub fn spawn_export(
+    state: Arc<Mutex<MonitorState>>,
+    req: ExportRequest,
+    app_handle: AppHandle,
+    paths: AppPaths,
+) {
     if let Ok(mut s) = state.lock() {
         s.nlbn_running = true;
         s.nlbn_last_result = None;
@@ -72,12 +80,7 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
     );
 
     thread::spawn(move || {
-        let exe_dir = std::env::current_exe()
-            .ok()
-            .and_then(|p| p.parent().map(|d| d.to_path_buf()))
-            .unwrap_or_else(|| PathBuf::from("."));
-
-        let temp_file = exe_dir.join("nlbn_ids.txt");
+        let temp_file = paths.cache_file("nlbn_ids", "txt");
 
         let write_result = (|| -> std::io::Result<()> {
             let mut file = fs::File::create(&temp_file)?;
@@ -91,7 +94,10 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
         match write_result {
             Ok(_) => {
                 let temp_str = temp_file.display().to_string();
-                let work_dir = temp_file.parent().unwrap_or(Path::new(".")).to_path_buf();
+                let work_dir = paths.cache_dir().to_path_buf();
+                let script_base = paths.cache_file("nlbn_export", "command");
+                let windows_script = script_base.with_extension("bat");
+                let unix_script = script_base.with_extension("command");
 
                 emit_progress(
                     &app_handle,
@@ -106,9 +112,23 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
                 );
 
                 let result = if req.show_terminal {
-                    run_in_terminal(&temp_str, &req.output_path, req.parallel, &work_dir)
+                    run_in_terminal(
+                        &temp_str,
+                        &req.output_path,
+                        req.parallel,
+                        req.path_mode,
+                        &work_dir,
+                        &windows_script,
+                        &unix_script,
+                    )
                 } else {
-                    run_in_background(&temp_str, &req.output_path, req.parallel, &work_dir)
+                    run_in_background(
+                        &temp_str,
+                        &req.output_path,
+                        req.parallel,
+                        req.path_mode,
+                        &work_dir,
+                    )
                 };
 
                 let mut notify_payload = None;
@@ -160,8 +180,8 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
                     thread::sleep(Duration::from_secs(2));
                 }
                 let _ = fs::remove_file(&temp_file);
-                let _ = fs::remove_file(work_dir.join("nlbn_export.bat"));
-                let _ = fs::remove_file(work_dir.join("nlbn_export.command"));
+                let _ = fs::remove_file(&windows_script);
+                let _ = fs::remove_file(&unix_script);
             }
             Err(e) => {
                 emit_progress(
@@ -218,11 +238,15 @@ fn run_in_terminal(
     temp_path: &str,
     output_path: &str,
     parallel: usize,
+    path_mode: NlbnPathMode,
     work_dir: &Path,
+    #[cfg(target_os = "windows")] windows_script_path: &Path,
+    #[cfg(not(target_os = "windows"))] _windows_script_path: &Path,
+    unix_script_path: &Path,
 ) -> Result<String, String> {
     let executable = resolve_nlbn_executable()?;
     let resolved_output_path = expand_user_path(output_path);
-    let use_project_relative = should_use_project_relative(&resolved_output_path);
+    let use_project_relative = resolve_project_relative_mode(path_mode, &resolved_output_path);
 
     #[cfg(target_os = "windows")]
     {
@@ -231,7 +255,6 @@ fn run_in_terminal(
         } else {
             ""
         };
-        let bat_file = work_dir.join("nlbn_export.bat");
         let bat_content = format!(
             "@echo on\r\ncd /D \"{}\"\r\n\"{}\" --full --batch \"{}\" -o \"{}\" --parallel {}{}\r\necho.\r\necho === Done ===\r\npause\r\n",
             work_dir.display(),
@@ -241,16 +264,22 @@ fn run_in_terminal(
             parallel,
             project_relative_arg,
         );
-        fs::write(&bat_file, &bat_content)
+        fs::write(windows_script_path, &bat_content)
             .map_err(|e| format!("Failed to write batch file: {}", e))?;
 
         Command::new("cmd")
             .raw_arg(format!(
                 "/C start \"nlbn export\" \"{}\"",
-                bat_file.display()
+                windows_script_path.display()
             ))
             .spawn()
-            .map(|_| format!("Temp: {}\nBatch: {}", temp_path, bat_file.display()))
+            .map(|_| {
+                format!(
+                    "Temp: {}\nBatch: {}",
+                    temp_path,
+                    windows_script_path.display()
+                )
+            })
             .map_err(|e| format!("Execution failed: {}", e))
     }
 
@@ -261,8 +290,7 @@ fn run_in_terminal(
         } else {
             ""
         };
-        let script_file = work_dir.join("nlbn_export.command");
-        let script_path = script_file.display().to_string();
+        let script_path = unix_script_path.display().to_string();
         let script_content = format!(
             "#!/bin/zsh\ncd {}\n{} --full --batch {} -o {} --parallel {}{}\necho\necho '=== Done ==='\necho 'Press Enter to exit'\nread\n",
             shell_quote(&work_dir.display().to_string()),
@@ -273,19 +301,25 @@ fn run_in_terminal(
             project_relative_arg,
         );
 
-        fs::write(&script_file, script_content)
+        fs::write(unix_script_path, script_content)
             .map_err(|e| format!("Failed to write command file: {}", e))?;
-        let mut permissions = fs::metadata(&script_file)
+        let mut permissions = fs::metadata(unix_script_path)
             .map_err(|e| format!("Failed to read command file metadata: {}", e))?
             .permissions();
         permissions.set_mode(0o755);
-        fs::set_permissions(&script_file, permissions)
+        fs::set_permissions(unix_script_path, permissions)
             .map_err(|e| format!("Failed to make command file executable: {}", e))?;
 
         Command::new("open")
             .args(["-a", "Terminal", &script_path])
             .spawn()
-            .map(|_| format!("Temp: {}\nCommand: {}", temp_path, script_file.display()))
+            .map(|_| {
+                format!(
+                    "Temp: {}\nCommand: {}",
+                    temp_path,
+                    unix_script_path.display()
+                )
+            })
             .map_err(|e| format!("Execution failed: {}", e))
     }
 
@@ -323,13 +357,14 @@ fn run_in_background(
     temp_path: &str,
     output_path: &str,
     parallel: usize,
+    path_mode: NlbnPathMode,
     work_dir: &Path,
 ) -> Result<String, String> {
     let executable = resolve_nlbn_executable()?;
     let resolved_output_path = expand_user_path(output_path);
     let parallel_str = parallel.to_string();
     let resolved_output_str = resolved_output_path.display().to_string();
-    let use_project_relative = should_use_project_relative(&resolved_output_path);
+    let use_project_relative = resolve_project_relative_mode(path_mode, &resolved_output_path);
 
     #[cfg(target_os = "windows")]
     let executable_str = executable.display().to_string();
@@ -520,6 +555,14 @@ fn should_use_project_relative(output_path: &Path) -> bool {
             .map(|ext| matches!(ext, "kicad_pro" | "kicad_pcb" | "pro"))
             .unwrap_or(false)
     })
+}
+
+fn resolve_project_relative_mode(path_mode: NlbnPathMode, output_path: &Path) -> bool {
+    match path_mode {
+        NlbnPathMode::Auto => should_use_project_relative(output_path),
+        NlbnPathMode::ProjectRelative => true,
+        NlbnPathMode::LibraryRelative => false,
+    }
 }
 
 #[cfg(target_os = "macos")]

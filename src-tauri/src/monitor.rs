@@ -8,15 +8,9 @@ use std::thread::{self, JoinHandle};
 use std::time::Duration;
 use tauri::{AppHandle, Emitter};
 
+use crate::app_paths::AppPaths;
+use crate::config::NlbnPathMode;
 use crate::extract::extract_by_keyword;
-
-pub fn default_save_path(filename: &str) -> String {
-    std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|d| d.join(filename)))
-        .map(|p| p.to_string_lossy().into_owned())
-        .unwrap_or_else(|| filename.to_string())
-}
 
 pub struct MonitorState {
     pub last_content: String,
@@ -30,6 +24,7 @@ pub struct MonitorState {
     pub nlbn_last_result: Option<String>,
     pub nlbn_show_terminal: bool,
     pub nlbn_parallel: usize,
+    pub nlbn_path_mode: NlbnPathMode,
     pub nlbn_running: bool,
     pub npnp_output_path: String,
     pub npnp_last_result: Option<String>,
@@ -43,10 +38,14 @@ pub struct MonitorState {
     pub npnp_force: bool,
     pub history_save_path: String,
     pub matched_save_path: String,
+    default_nlbn_output_path: String,
+    default_npnp_output_path: String,
 }
 
 impl MonitorState {
-    pub fn new() -> Self {
+    pub fn new(paths: &AppPaths) -> Self {
+        let default_nlbn_output_path = paths.default_nlbn_output_path_string();
+        let default_npnp_output_path = paths.default_npnp_output_path_string();
         Self {
             last_content: String::new(),
             history: Vec::new(),
@@ -55,12 +54,13 @@ impl MonitorState {
             initialized: false,
             monitoring: true,
             match_debug_log: Vec::new(),
-            nlbn_output_path: "~/lib".to_string(),
+            nlbn_output_path: default_nlbn_output_path.clone(),
             nlbn_last_result: None,
             nlbn_show_terminal: true,
             nlbn_parallel: 4,
+            nlbn_path_mode: NlbnPathMode::Auto,
             nlbn_running: false,
-            npnp_output_path: "npnp_export".to_string(),
+            npnp_output_path: default_npnp_output_path.clone(),
             npnp_last_result: None,
             npnp_running: false,
             npnp_mode: "full".to_string(),
@@ -70,8 +70,10 @@ impl MonitorState {
             npnp_parallel: 4,
             npnp_continue_on_error: true,
             npnp_force: false,
-            history_save_path: default_save_path("history.txt"),
-            matched_save_path: default_save_path("matched.txt"),
+            history_save_path: paths.default_history_save_path_string(),
+            matched_save_path: paths.default_matched_save_path_string(),
+            default_nlbn_output_path,
+            default_npnp_output_path,
         }
     }
 
@@ -165,7 +167,12 @@ impl MonitorState {
     }
 
     pub fn set_nlbn_output_path(&mut self, path: String) {
-        self.nlbn_output_path = path;
+        let trimmed = path.trim();
+        self.nlbn_output_path = if trimmed.is_empty() {
+            self.default_nlbn_output_path.clone()
+        } else {
+            trimmed.to_string()
+        };
     }
 
     pub fn toggle_nlbn_show_terminal(&mut self) {
@@ -176,8 +183,17 @@ impl MonitorState {
         self.nlbn_parallel = parallel.max(1);
     }
 
+    pub fn set_nlbn_path_mode(&mut self, path_mode: NlbnPathMode) {
+        self.nlbn_path_mode = path_mode;
+    }
+
     pub fn set_npnp_output_path(&mut self, path: String) {
-        self.npnp_output_path = path;
+        let trimmed = path.trim();
+        self.npnp_output_path = if trimmed.is_empty() {
+            self.default_npnp_output_path.clone()
+        } else {
+            trimmed.to_string()
+        };
     }
 
     pub fn set_npnp_mode(&mut self, mode: String) {
@@ -218,22 +234,12 @@ impl MonitorState {
         self.npnp_force = force;
     }
 
-    pub fn set_history_save_path(&mut self, path: String) {
-        let trimmed = path.trim();
-        self.history_save_path = if trimmed.is_empty() {
-            default_save_path("history.txt")
-        } else {
-            trimmed.to_string()
-        };
+    pub fn set_history_save_path(&mut self, path: String, paths: &AppPaths) {
+        self.history_save_path = paths.resolve_history_save_path(&path);
     }
 
-    pub fn set_matched_save_path(&mut self, path: String) {
-        let trimmed = path.trim();
-        self.matched_save_path = if trimmed.is_empty() {
-            default_save_path("matched.txt")
-        } else {
-            trimmed.to_string()
-        };
+    pub fn set_matched_save_path(&mut self, path: String, paths: &AppPaths) {
+        self.matched_save_path = paths.resolve_matched_save_path(&path);
     }
 
     pub fn delete_history(&mut self, index: usize) {

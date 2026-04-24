@@ -5,9 +5,9 @@ use std::fs;
 use std::io::Write;
 use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
-use std::time::{SystemTime, UNIX_EPOCH};
 use tauri::{AppHandle, Emitter};
 
+use crate::app_paths::AppPaths;
 use crate::monitor::MonitorState;
 
 const DEFAULT_LIBRARY_NAME: &str = "SeExMerged";
@@ -41,7 +41,12 @@ pub struct ExportRequest {
     pub force: bool,
 }
 
-pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_handle: AppHandle) {
+pub fn spawn_export(
+    state: Arc<Mutex<MonitorState>>,
+    req: ExportRequest,
+    app_handle: AppHandle,
+    paths: AppPaths,
+) {
     if let Ok(mut s) = state.lock() {
         s.npnp_running = true;
         s.npnp_last_result = None;
@@ -56,7 +61,7 @@ pub fn spawn_export(state: Arc<Mutex<MonitorState>>, req: ExportRequest, app_han
     );
 
     tauri::async_runtime::spawn(async move {
-        let input_path = create_temp_input_path();
+        let input_path = paths.cache_file("seex_npnp_ids", "txt");
         let result: Result<String, String> = async {
             write_ids_file(&input_path, &req.ids)?;
             let client = LcedaClient::new();
@@ -127,18 +132,6 @@ fn running_message(req: &ExportRequest) -> String {
     } else {
         format!("Running npnp batch for {} items...", count)
     }
-}
-
-fn create_temp_input_path() -> PathBuf {
-    let stamp = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|duration| duration.as_millis())
-        .unwrap_or(0);
-    std::env::temp_dir().join(format!(
-        "seex_npnp_ids_{}_{}.txt",
-        std::process::id(),
-        stamp
-    ))
 }
 
 fn write_ids_file(path: &PathBuf, ids: &[String]) -> Result<(), String> {

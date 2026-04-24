@@ -12,6 +12,7 @@ interface AppState {
   nlbn_show_terminal: boolean;
   nlbn_parallel: number;
   nlbn_running: boolean;
+  nlbn_path_mode?: string | null;
   npnp_output_path: string;
   npnp_last_result: string | null;
   npnp_running: boolean;
@@ -60,6 +61,7 @@ interface ExportProgressState {
 
 type Lang = "en" | "zh";
 type NpnpMode = "full" | "schlib" | "pcblib";
+type Nlbn3dPathMode = "auto" | "project_relative" | "library_relative";
 
 interface ExportCardOptions {
   tool: ExportTool;
@@ -75,6 +77,11 @@ interface ExportCardOptions {
 }
 
 const npnpModes: NpnpMode[] = ["full", "schlib", "pcblib"];
+const nlbn3dModes: { id: string; value: Nlbn3dPathMode }[] = [
+  { id: "btn-nlbn-3d-mode-auto", value: "auto" },
+  { id: "btn-nlbn-3d-mode-project", value: "project_relative" },
+  { id: "btn-nlbn-3d-mode-library", value: "library_relative" },
+];
 
 const enTranslations: Record<string, string> = {
   "nav.monitor": "Monitor",
@@ -129,6 +136,11 @@ const enTranslations: Record<string, string> = {
   "export.toggleTerminal": "Toggle Terminal",
   "export.terminalOn": "Terminal: ON",
   "export.terminalOff": "Terminal: OFF",
+  "export.nlbn3dPathMode": "3D path mode:",
+  "export.nlbn3dModeAuto": "Auto",
+  "export.nlbn3dModeProject": "KiCad Project",
+  "export.nlbn3dModeLibrary": "Library Relative",
+  "export.nlbn3dModeHint": "Auto follows export directory detection. Choose an explicit mode to override KiCad 3D path generation.",
   "export.example": "Example: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "nlbn is not installed",
   "export.nlbnInstallHint": "Install nlbn and add it to your system PATH to use this feature.",
@@ -211,6 +223,11 @@ const zhTranslations: Record<string, string> = {
   "export.toggleTerminal": "\u5207\u6362\u7ec8\u7aef",
   "export.terminalOn": "\u7ec8\u7aef: \u5f00",
   "export.terminalOff": "\u7ec8\u7aef: \u5173",
+  "export.nlbn3dPathMode": "3D \u8def\u5f84\u6a21\u5f0f:",
+  "export.nlbn3dModeAuto": "\u81ea\u52a8",
+  "export.nlbn3dModeProject": "KiCad \u9879\u76ee",
+  "export.nlbn3dModeLibrary": "\u5e93\u76f8\u5bf9",
+  "export.nlbn3dModeHint": "\u81ea\u52a8\u6a21\u5f0f\u4f1a\u6839\u636e\u5bfc\u51fa\u76ee\u5f55\u63a8\u65ad\u8def\u5f84\u7b56\u7565\uff0c\u4e5f\u53ef\u624b\u52a8\u6307\u5b9a KiCad 3D \u8def\u5f84\u751f\u6210\u65b9\u5f0f\u3002",
   "export.example": "\u793a\u4f8b: C:\\Users\\xxx\\lib",
   "export.nlbnNotFound": "\u672a\u5b89\u88c5 nlbn",
   "export.nlbnInstallHint": "\u8bf7\u5148\u5b89\u88c5 nlbn\uff0c\u5e76\u5c06\u5176\u52a0\u5165\u7cfb\u7edf PATH \u540e\u518d\u4f7f\u7528\u6b64\u529f\u80fd\u3002",
@@ -254,8 +271,23 @@ const exportUi: Record<ExportTool, { progress: ExportProgressState | null; notic
   npnp: { progress: null, notice: null, resultKind: "info" },
 };
 
+const nlbnUiState: {
+  mode: Nlbn3dPathMode;
+} = {
+  mode: "auto",
+};
+
 const PATTERN_QUICK = "regex:(?m)^(C\\d{3,})$";
 const PATTERN_FULL = "regex:\u7f16\u53f7[\uff1a:]\\s*(C\\d+)";
+
+function normalizeNlbn3dPathMode(value: unknown): Nlbn3dPathMode | null {
+  if (typeof value !== "string") return null;
+  const normalized = value.trim().toLowerCase().replace(/[-\s]/g, "_");
+  if (normalized === "auto") return "auto";
+  if (["project_relative", "project", "kicad_project"].includes(normalized)) return "project_relative";
+  if (["library_relative", "library", "relative"].includes(normalized)) return "library_relative";
+  return null;
+}
 
 function t(key: string): string {
   return translations[currentLang][key] ?? translations.en[key] ?? key;
@@ -305,6 +337,7 @@ function applyLanguage(lang: Lang) {
   $("btn-lang-en").classList.toggle("active", lang === "en");
   $("btn-lang-zh").classList.toggle("active", lang === "zh");
   $("btn-toggle-matched").textContent = showMatched ? t("monitor.show") : t("monitor.hide");
+  rerenderState();
 }
 
 function switchPage(pageName: string) {
@@ -467,7 +500,23 @@ function renderExporterCard(options: ExportCardOptions) {
   renderExportResult(options.tool, options.result, busy);
 }
 
+function syncOptionalNlbnState(state: AppState) {
+  const mode = normalizeNlbn3dPathMode(state.nlbn_path_mode);
+  if (mode) {
+    nlbnUiState.mode = mode;
+  }
+}
+
+function renderNlbn3dMode() {
+  nlbn3dModes.forEach(({ id, value }) => {
+    const button = $(id) as HTMLButtonElement;
+    button.classList.toggle("active", nlbnUiState.mode === value);
+  });
+}
+
 function renderState(state: AppState) {
+  syncOptionalNlbnState(state);
+
   const kwLabel = t("status.keyword");
   const noneLabel = t("status.none");
 
@@ -484,6 +533,7 @@ function renderState(state: AppState) {
   syncInputValue("matched-save-path-input", state.matched_save_path);
 
   $("nlbn-terminal-status").textContent = state.nlbn_show_terminal ? t("export.terminalOn") : t("export.terminalOff");
+  renderNlbn3dMode();
 
   const monBtn = $("btn-toggle-monitor");
   monBtn.classList.toggle("active", state.monitoring);
@@ -720,6 +770,13 @@ async function syncNpnpExportInputs() {
   await invoke("set_npnp_parallel", { parallel });
 }
 
+async function setNlbn3dMode(mode: Nlbn3dPathMode) {
+  await invoke("set_nlbn_path_mode", { pathMode: mode });
+  nlbnUiState.mode = mode;
+  setExportNotice("nlbn", null);
+  await refreshState();
+}
+
 window.addEventListener("DOMContentLoaded", async () => {
   const savedLang = localStorage.getItem("seex-lang") as Lang | null;
   if (savedLang === "zh" || savedLang === "en") {
@@ -843,6 +900,14 @@ window.addEventListener("DOMContentLoaded", async () => {
     await queueExportConfigWrite(async () => {
       await invoke("toggle_nlbn_terminal");
       await refreshState();
+    });
+  });
+
+  nlbn3dModes.forEach(({ id, value }) => {
+    $(id).addEventListener("click", async () => {
+      await queueExportConfigWrite(async () => {
+        await setNlbn3dMode(value);
+      });
     });
   });
 
@@ -1058,4 +1123,3 @@ window.addEventListener("DOMContentLoaded", async () => {
     }
   });
 });
-

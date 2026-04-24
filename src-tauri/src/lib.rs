@@ -1,10 +1,12 @@
+mod app_paths;
 mod config;
 mod extract;
 mod monitor;
 mod nlbn;
 mod npnp;
 
-use config::{AppConfig, MonitorConfig, NlbnConfig, NpnpConfig};
+use app_paths::AppPaths;
+use config::{AppConfig, MonitorConfig, NlbnConfig, NlbnPathMode, NpnpConfig};
 use monitor::{MonitorHandle, MonitorState};
 use serde::Serialize;
 use std::io::Write;
@@ -21,6 +23,7 @@ pub struct AppState {
     pub nlbn_last_result: Option<String>,
     pub nlbn_show_terminal: bool,
     pub nlbn_parallel: usize,
+    pub nlbn_path_mode: NlbnPathMode,
     pub nlbn_running: bool,
     pub npnp_output_path: String,
     pub npnp_last_result: Option<String>,
@@ -41,6 +44,7 @@ pub struct AppState {
 
 pub struct ManagedMonitor {
     pub state: Arc<Mutex<MonitorState>>,
+    pub paths: AppPaths,
     pub _handle: Mutex<Option<MonitorHandle>>,
 }
 
@@ -50,6 +54,7 @@ fn snapshot_config(state: &MonitorState) -> AppConfig {
             output_path: state.nlbn_output_path.clone(),
             show_terminal: state.nlbn_show_terminal,
             parallel: state.nlbn_parallel,
+            path_mode: state.nlbn_path_mode,
         },
         npnp: NpnpConfig {
             output_path: state.npnp_output_path.clone(),
@@ -70,7 +75,7 @@ fn snapshot_config(state: &MonitorState) -> AppConfig {
 
 fn save_config(monitor: &State<ManagedMonitor>) {
     if let Ok(state) = monitor.state.lock() {
-        snapshot_config(&state).save();
+        snapshot_config(&state).save(&monitor.paths);
     }
 }
 
@@ -89,6 +94,7 @@ fn get_state(monitor: State<ManagedMonitor>) -> AppState {
             nlbn_last_result: m.nlbn_last_result.clone(),
             nlbn_show_terminal: m.nlbn_show_terminal,
             nlbn_parallel: m.nlbn_parallel,
+            nlbn_path_mode: m.nlbn_path_mode,
             nlbn_running: m.nlbn_running,
             npnp_output_path: m.npnp_output_path.clone(),
             npnp_last_result: m.npnp_last_result.clone(),
@@ -109,12 +115,13 @@ fn get_state(monitor: State<ManagedMonitor>) -> AppState {
             history: vec![],
             matched: vec![],
             keyword: String::new(),
-            nlbn_output_path: defaults.nlbn.output_path,
+            nlbn_output_path: monitor.paths.default_nlbn_output_path_string(),
             nlbn_last_result: None,
             nlbn_show_terminal: defaults.nlbn.show_terminal,
             nlbn_parallel: defaults.nlbn.parallel,
+            nlbn_path_mode: defaults.nlbn.path_mode,
             nlbn_running: false,
-            npnp_output_path: defaults.npnp.output_path,
+            npnp_output_path: monitor.paths.default_npnp_output_path_string(),
             npnp_last_result: None,
             npnp_running: false,
             npnp_mode: defaults.npnp.mode,
@@ -127,8 +134,8 @@ fn get_state(monitor: State<ManagedMonitor>) -> AppState {
             monitoring: true,
             history_count: 0,
             matched_count: 0,
-            history_save_path: monitor::default_save_path("history.txt"),
-            matched_save_path: monitor::default_save_path("matched.txt"),
+            history_save_path: monitor.paths.default_history_save_path_string(),
+            matched_save_path: monitor.paths.default_matched_save_path_string(),
         }
     }
 }
@@ -254,7 +261,7 @@ fn save_matched(monitor: State<ManagedMonitor>) -> String {
 #[tauri::command]
 fn set_history_save_path(monitor: State<ManagedMonitor>, path: String) {
     if let Ok(mut m) = monitor.state.lock() {
-        m.set_history_save_path(path);
+        m.set_history_save_path(path, &monitor.paths);
     }
     save_config(&monitor);
 }
@@ -262,7 +269,7 @@ fn set_history_save_path(monitor: State<ManagedMonitor>, path: String) {
 #[tauri::command]
 fn set_matched_save_path(monitor: State<ManagedMonitor>, path: String) {
     if let Ok(mut m) = monitor.state.lock() {
-        m.set_matched_save_path(path);
+        m.set_matched_save_path(path, &monitor.paths);
     }
     save_config(&monitor);
 }
@@ -287,6 +294,14 @@ fn toggle_nlbn_terminal(monitor: State<ManagedMonitor>) {
 fn set_nlbn_parallel(monitor: State<ManagedMonitor>, parallel: usize) {
     if let Ok(mut m) = monitor.state.lock() {
         m.set_nlbn_parallel(parallel);
+    }
+    save_config(&monitor);
+}
+
+#[tauri::command]
+fn set_nlbn_path_mode(monitor: State<ManagedMonitor>, path_mode: NlbnPathMode) {
+    if let Ok(mut m) = monitor.state.lock() {
+        m.set_nlbn_path_mode(path_mode);
     }
     save_config(&monitor);
 }
@@ -372,12 +387,18 @@ fn nlbn_export(monitor: State<ManagedMonitor>, app_handle: AppHandle) -> String 
             output_path: m.nlbn_output_path.clone(),
             show_terminal: m.nlbn_show_terminal,
             parallel: m.nlbn_parallel,
+            path_mode: m.nlbn_path_mode,
         }
     } else {
         return "State lock failed".to_string();
     };
 
-    nlbn::spawn_export(Arc::clone(&monitor.state), request, app_handle);
+    nlbn::spawn_export(
+        Arc::clone(&monitor.state),
+        request,
+        app_handle,
+        monitor.paths.clone(),
+    );
     "Export started".to_string()
 }
 
@@ -403,7 +424,12 @@ fn npnp_export(monitor: State<ManagedMonitor>, app_handle: AppHandle) -> String 
         return "State lock failed".to_string();
     };
 
-    npnp::spawn_export(Arc::clone(&monitor.state), request, app_handle);
+    npnp::spawn_export(
+        Arc::clone(&monitor.state),
+        request,
+        app_handle,
+        monitor.paths.clone(),
+    );
     "Export started".to_string()
 }
 
@@ -425,42 +451,46 @@ fn copy_to_clipboard(text: String) -> Result<(), String> {
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
-    let config = AppConfig::load();
-
-    let state = Arc::new(Mutex::new(MonitorState::new()));
-    if let Ok(mut s) = state.lock() {
-        s.set_nlbn_output_path(config.nlbn.output_path.clone());
-        s.nlbn_show_terminal = config.nlbn.show_terminal;
-        s.set_nlbn_parallel(config.nlbn.parallel);
-        s.set_npnp_output_path(config.npnp.output_path.clone());
-        s.set_npnp_mode(config.npnp.mode.clone());
-        s.set_npnp_merge(config.npnp.merge);
-        s.set_npnp_append(config.npnp.append);
-        s.set_npnp_library_name(config.npnp.library_name.clone());
-        s.set_npnp_parallel(config.npnp.parallel);
-        s.set_npnp_continue_on_error(config.npnp.continue_on_error);
-        s.set_npnp_force(config.npnp.force);
-        s.set_history_save_path(config.monitor.history_save_path.clone());
-        s.set_matched_save_path(config.monitor.matched_save_path.clone());
-        s.set_keyword(
-            "regex:\u{7f16}\u{53f7}[\u{ff1a}:]\\s*(C\\d+)||regex:(?m)^(C\\d{3,})$".to_string(),
-        );
-    }
-
-    let monitor_state = Arc::clone(&state);
-
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
-        .manage(ManagedMonitor {
-            state: monitor_state,
-            _handle: Mutex::new(None),
-        })
         .setup(move |app| {
             let app_handle = app.handle().clone();
+            let paths = AppPaths::resolve(&app_handle).map_err(std::io::Error::other)?;
+            let config = AppConfig::load(&paths);
+
+            let state = Arc::new(Mutex::new(MonitorState::new(&paths)));
+            if let Ok(mut s) = state.lock() {
+                s.set_nlbn_output_path(config.nlbn.output_path.clone());
+                s.nlbn_show_terminal = config.nlbn.show_terminal;
+                s.set_nlbn_parallel(config.nlbn.parallel);
+                s.set_nlbn_path_mode(config.nlbn.path_mode);
+                s.set_npnp_output_path(config.npnp.output_path.clone());
+                s.set_npnp_mode(config.npnp.mode.clone());
+                s.set_npnp_merge(config.npnp.merge);
+                s.set_npnp_append(config.npnp.append);
+                s.set_npnp_library_name(config.npnp.library_name.clone());
+                s.set_npnp_parallel(config.npnp.parallel);
+                s.set_npnp_continue_on_error(config.npnp.continue_on_error);
+                s.set_npnp_force(config.npnp.force);
+                s.set_history_save_path(config.monitor.history_save_path.clone(), &paths);
+                s.set_matched_save_path(config.monitor.matched_save_path.clone(), &paths);
+                s.set_keyword(
+                    "regex:\u{7f16}\u{53f7}[\u{ff1a}:]\\s*(C\\d+)||regex:(?m)^(C\\d{3,})$"
+                        .to_string(),
+                );
+            }
+
+            if let Ok(s) = state.lock() {
+                snapshot_config(&s).save(&paths);
+            }
+
             let handle = MonitorHandle::spawn(Arc::clone(&state), app_handle);
-            let managed: State<ManagedMonitor> = app.state();
-            *managed._handle.lock().unwrap() = Some(handle);
+            app.manage(ManagedMonitor {
+                state,
+                paths,
+                _handle: Mutex::new(Some(handle)),
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
@@ -477,6 +507,7 @@ pub fn run() {
             set_nlbn_path,
             toggle_nlbn_terminal,
             set_nlbn_parallel,
+            set_nlbn_path_mode,
             set_npnp_path,
             set_npnp_mode,
             set_npnp_merge,

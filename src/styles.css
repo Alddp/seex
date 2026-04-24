@@ -329,7 +329,6 @@ body {
 
 .row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .spacer { flex: 1; }
-.actions-row { padding-top: 6px; }
 
 /* ================================================================== */
 /*  INPUTS                                                             */
@@ -632,6 +631,23 @@ button {
 .msg-info  { background: var(--primary-lighter); color: var(--text-2); }
 .msg-success { background: #edf8ee; color: #2f7d33; }
 .msg-error { background: var(--danger-light); color: var(--danger); }
+
+.btn-pill:disabled,
+.btn-outline:disabled,
+.btn-primary:disabled {
+  opacity: .45;
+  cursor: not-allowed;
+  transform: none;
+  box-shadow: none;
+}
+
+.btn-pill:disabled:hover,
+.btn-outline:disabled:hover,
+.btn-primary:disabled:hover {
+  border-color: transparent;
+  color: inherit;
+  background: inherit;
+}
 /* nlbn not found prompt */
 .nlbn-prompt {
   margin-top: 10px;
