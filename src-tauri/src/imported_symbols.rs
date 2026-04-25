@@ -29,6 +29,8 @@ pub struct ImportedSymbolUpdateRequest {
 pub struct ImportedSymbolDeleteRequest {
     pub source_file: String,
     pub symbol_name: String,
+    #[serde(default)]
+    pub lcsc_part: Option<String>,
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -44,6 +46,13 @@ struct SymbolBlock<'a> {
     end: usize,
     symbol_name: String,
     lcsc_part: Option<String>,
+}
+
+#[derive(Debug, Default, PartialEq, Eq)]
+struct DeletedGeneratedAssets {
+    footprints: usize,
+    models: usize,
+    checkpoint_entries: usize,
 }
 
 pub fn load_imported_symbols(output_path: &Path) -> Result<ImportedSymbolsResponse, String> {
@@ -137,13 +146,32 @@ pub fn delete_imported_symbol(
             )
         })?;
 
+    let lcsc_part = current.lcsc_part.clone().or_else(|| {
+        request
+            .lcsc_part
+            .as_deref()
+            .map(str::trim)
+            .filter(|part| !part.is_empty())
+            .map(str::to_string)
+    });
+    let footprint_name = footprint_name_from_symbol_block(current.text)
+        .unwrap_or_else(|| current.symbol_name.clone());
+
     let updated_content = delete_symbol_block(&content, current);
     fs::write(&library_path, updated_content)
         .map_err(|err| format!("Failed to write {}: {}", library_path.display(), err))?;
 
-    Ok(format!(
-        "Deleted {} from {}",
-        request.symbol_name, request.source_file
+    let deleted_assets = delete_generated_assets(
+        output_path,
+        &library_path,
+        &footprint_name,
+        lcsc_part.as_deref(),
+    )?;
+
+    Ok(format_delete_result(
+        &request.symbol_name,
+        &request.source_file,
+        &deleted_assets,
     ))
 }
 
@@ -344,6 +372,22 @@ fn head_string_after_keyword(block: &str, keyword: &str) -> Option<String> {
 fn property_value(block: &str, property_name: &str) -> Option<String> {
     let range = property_value_range(block, property_name)?;
     Some(unescape_kicad_string(&block[range]))
+}
+
+fn footprint_name_from_symbol_block(block: &str) -> Option<String> {
+    let footprint = property_value(block, "Footprint")?;
+    let trimmed = footprint.trim();
+    if trimmed.is_empty() {
+        return None;
+    }
+
+    Some(
+        trimmed
+            .rsplit_once(':')
+            .map(|(_, name)| name)
+            .unwrap_or(trimmed)
+            .to_string(),
+    )
 }
 
 fn property_value_range(block: &str, property_name: &str) -> Option<Range<usize>> {
@@ -571,10 +615,10 @@ fn rename_symbol_names_in_block(
             let existing = unescape_kicad_string(&block[range.clone()]);
             if existing == current_name {
                 replacements.push((range, escape_kicad_string(new_name)));
-            } else if let Some(suffix) = existing.strip_prefix(current_name) {
-                if suffix.starts_with('_') {
-                    replacements.push((range, escape_kicad_string(&format!("{new_name}{suffix}"))));
-                }
+            } else if let Some(suffix) = existing.strip_prefix(current_name)
+                && suffix.starts_with('_')
+            {
+                replacements.push((range, escape_kicad_string(&format!("{new_name}{suffix}"))));
             }
         }
         index += 1;
@@ -591,7 +635,7 @@ fn apply_replacements(
     input: &str,
     mut replacements: Vec<(Range<usize>, String)>,
 ) -> Result<String, String> {
-    replacements.sort_by(|left, right| right.0.start.cmp(&left.0.start));
+    replacements.sort_by_key(|replacement| std::cmp::Reverse(replacement.0.start));
     let mut result = input.to_string();
     let mut previous_start = input.len();
 
@@ -628,6 +672,154 @@ fn delete_symbol_block(content: &str, block: &SymbolBlock<'_>) -> String {
     updated.push_str(&content[..start]);
     updated.push_str(&content[end..]);
     updated
+}
+
+fn delete_generated_assets(
+    output_path: &Path,
+    library_path: &Path,
+    footprint_name: &str,
+    lcsc_part: Option<&str>,
+) -> Result<DeletedGeneratedAssets, String> {
+    let mut deleted = DeletedGeneratedAssets::default();
+    let Some(library_name) = library_path.file_stem().and_then(|name| name.to_str()) else {
+        return Ok(deleted);
+    };
+
+    let pretty_dir = output_path.join(format!("{library_name}.pretty"));
+    let footprint_path = pretty_dir.join(format!("{footprint_name}.kicad_mod"));
+    if remove_file_if_exists(&footprint_path)? {
+        deleted.footprints += 1;
+    }
+
+    if let Some(lcsc_part) = lcsc_part {
+        deleted.models += delete_model_files_for_lcsc(output_path, library_name, lcsc_part)?;
+        if remove_checkpoint_entry(output_path, lcsc_part)? {
+            deleted.checkpoint_entries += 1;
+        }
+    }
+
+    Ok(deleted)
+}
+
+fn delete_model_files_for_lcsc(
+    output_path: &Path,
+    library_name: &str,
+    lcsc_part: &str,
+) -> Result<usize, String> {
+    let shapes_dir = output_path.join(format!("{library_name}.3dshapes"));
+    let Ok(entries) = fs::read_dir(&shapes_dir) else {
+        return Ok(0);
+    };
+    let suffix = format!("_{lcsc_part}");
+    let mut removed = 0usize;
+
+    for entry in entries {
+        let entry = entry.map_err(|err| {
+            format!(
+                "Failed to read 3D model directory {}: {}",
+                shapes_dir.display(),
+                err
+            )
+        })?;
+        let path = entry.path();
+        if !is_generated_model_for_lcsc(&path, &suffix) {
+            continue;
+        }
+        if remove_file_if_exists(&path)? {
+            removed += 1;
+        }
+    }
+
+    Ok(removed)
+}
+
+fn is_generated_model_for_lcsc(path: &Path, lcsc_suffix: &str) -> bool {
+    let Some(extension) = path.extension().and_then(|extension| extension.to_str()) else {
+        return false;
+    };
+    if !matches!(extension.to_ascii_lowercase().as_str(), "step" | "wrl") {
+        return false;
+    }
+
+    path.file_stem()
+        .and_then(|stem| stem.to_str())
+        .is_some_and(|stem| stem.ends_with(lcsc_suffix))
+}
+
+fn remove_checkpoint_entry(output_path: &Path, lcsc_part: &str) -> Result<bool, String> {
+    let checkpoint_path = output_path.join(".checkpoint");
+    let content = match fs::read_to_string(&checkpoint_path) {
+        Ok(content) => content,
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(err) => {
+            return Err(format!(
+                "Failed to read {}: {}",
+                checkpoint_path.display(),
+                err
+            ));
+        }
+    };
+
+    let mut removed = false;
+    let mut kept_lines = Vec::new();
+    for line in content.lines() {
+        let checkpoint_id = line
+            .split_once('\t')
+            .map(|(id, _)| id)
+            .unwrap_or(line)
+            .trim();
+        if checkpoint_id == lcsc_part {
+            removed = true;
+        } else {
+            kept_lines.push(line);
+        }
+    }
+
+    if !removed {
+        return Ok(false);
+    }
+
+    let mut updated = kept_lines.join("\n");
+    if !updated.is_empty() {
+        updated.push('\n');
+    }
+    fs::write(&checkpoint_path, updated)
+        .map_err(|err| format!("Failed to write {}: {}", checkpoint_path.display(), err))?;
+    Ok(true)
+}
+
+fn remove_file_if_exists(path: &Path) -> Result<bool, String> {
+    match fs::remove_file(path) {
+        Ok(()) => Ok(true),
+        Err(err) if err.kind() == std::io::ErrorKind::NotFound => Ok(false),
+        Err(err) => Err(format!("Failed to remove {}: {}", path.display(), err)),
+    }
+}
+
+fn format_delete_result(
+    symbol_name: &str,
+    source_file: &str,
+    deleted_assets: &DeletedGeneratedAssets,
+) -> String {
+    let mut details = Vec::new();
+    if deleted_assets.footprints > 0 {
+        details.push(format!("{} footprint", deleted_assets.footprints));
+    }
+    if deleted_assets.models > 0 {
+        details.push(format!("{} 3D model file(s)", deleted_assets.models));
+    }
+    if deleted_assets.checkpoint_entries > 0 {
+        details.push("checkpoint entry".to_string());
+    }
+
+    if details.is_empty() {
+        format!("Deleted {symbol_name} from {source_file}")
+    } else {
+        format!(
+            "Deleted {symbol_name} from {source_file}; also removed {}",
+            details.join(", ")
+        )
+    }
 }
 
 fn line_start(content: &str, index: usize) -> usize {
@@ -881,6 +1073,7 @@ mod tests {
             ImportedSymbolDeleteRequest {
                 source_file: "../alpha.kicad_sym".to_string(),
                 symbol_name: "Alpha".to_string(),
+                lcsc_part: None,
             },
         )
         .unwrap_err();
@@ -900,6 +1093,7 @@ mod tests {
             ImportedSymbolDeleteRequest {
                 source_file: "alpha.txt".to_string(),
                 symbol_name: "Alpha".to_string(),
+                lcsc_part: None,
             },
         )
         .unwrap_err();
@@ -927,6 +1121,7 @@ mod tests {
             ImportedSymbolDeleteRequest {
                 source_file: "alpha.kicad_sym".to_string(),
                 symbol_name: "Alpha".to_string(),
+                lcsc_part: None,
             },
         )
         .expect("delete should succeed");
@@ -939,6 +1134,58 @@ mod tests {
         let response = load_imported_symbols(&root).unwrap();
         assert_eq!(response.items.len(), 1);
         assert_eq!(response.items[0].symbol_name, "Beta");
+
+        let _ = fs::remove_dir_all(root);
+    }
+
+    #[test]
+    fn delete_removes_matching_generated_assets_and_checkpoint_entry() {
+        let root = test_root("delete_assets");
+        let pretty_dir = root.join("seex.pretty");
+        let shapes_dir = root.join("seex.3dshapes");
+        fs::create_dir_all(&pretty_dir).unwrap();
+        fs::create_dir_all(&shapes_dir).unwrap();
+
+        let symbol_name = "ESP32-C3-MINI-1-N4_C2838502";
+        let footprint_path = pretty_dir.join(format!("{symbol_name}.kicad_mod"));
+        let step_path = shapes_dir.join("WIFIM-SMD_ESP32-C3-MINI-1_C2838502.step");
+        let wrl_path = shapes_dir.join("WIFIM-SMD_ESP32-C3-MINI-1_C2838502.wrl");
+        let other_model_path = shapes_dir.join("OTHER_C123.step");
+
+        fs::write(&footprint_path, "footprint").unwrap();
+        fs::write(&step_path, "step").unwrap();
+        fs::write(&wrl_path, "wrl").unwrap();
+        fs::write(&other_model_path, "other").unwrap();
+        fs::write(root.join(".checkpoint"), "C123\tsfm\nC2838502\tsfm\n").unwrap();
+        fs::write(
+            root.join("seex.kicad_sym"),
+            wrap_library(&[format!(
+                "  (symbol \"{symbol_name}\"\n    (property \"LCSC Part\" \"C2838502\" (id 5) (at 0 0 0))\n    (property \"Footprint\" \"seex:{symbol_name}\" (id 2) (at 0 0 0))\n    (symbol \"{symbol_name}_0_1\")\n  )\n"
+            )]),
+        )
+        .unwrap();
+
+        let result = delete_imported_symbol(
+            &root,
+            ImportedSymbolDeleteRequest {
+                source_file: "seex.kicad_sym".to_string(),
+                symbol_name: symbol_name.to_string(),
+                lcsc_part: None,
+            },
+        )
+        .expect("delete should succeed");
+
+        assert!(result.contains("1 footprint"));
+        assert!(result.contains("2 3D model file(s)"));
+        assert!(result.contains("checkpoint entry"));
+        assert!(!footprint_path.exists());
+        assert!(!step_path.exists());
+        assert!(!wrl_path.exists());
+        assert!(other_model_path.exists());
+        assert_eq!(
+            fs::read_to_string(root.join(".checkpoint")).unwrap(),
+            "C123\tsfm\n"
+        );
 
         let _ = fs::remove_dir_all(root);
     }
@@ -963,6 +1210,7 @@ mod tests {
             ImportedSymbolDeleteRequest {
                 source_file: "alpha.kicad_sym".to_string(),
                 symbol_name: "Alpha_0_1".to_string(),
+                lcsc_part: None,
             },
         )
         .unwrap_err();

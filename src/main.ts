@@ -216,7 +216,7 @@ const enTranslations: Record<string, string> = {
   "imported.editorLcscPart": "LCSC Part:",
   "imported.save": "Save",
   "imported.cancel": "Cancel",
-  "imported.deleteConfirm": "Delete {symbol} from {file}? This change rewrites the KiCad symbol library.",
+  "imported.deleteConfirm": "Delete {symbol} from {file}? This also removes the matching footprint, 3D models, and checkpoint entry when present.",
   "imported.search": "Search:",
   "imported.searchPlaceholder": "Filter by LCSC Part or symbol name",
   "imported.total": "Total",
@@ -357,7 +357,7 @@ const zhTranslations: Record<string, string> = {
   "imported.editorLcscPart": "LCSC Part:",
   "imported.save": "\u4fdd\u5b58",
   "imported.cancel": "\u53d6\u6d88",
-  "imported.deleteConfirm": "\u786e\u5b9a\u8981\u4ece {file} \u5220\u9664 {symbol} \u5417\uff1f\u8fd9\u4f1a\u76f4\u63a5\u91cd\u5199 KiCad \u7b26\u53f7\u5e93\u6587\u4ef6\u3002",
+  "imported.deleteConfirm": "\u786e\u5b9a\u8981\u4ece {file} \u5220\u9664 {symbol} \u5417\uff1f\u5982\u679c\u5b58\u5728\u5bf9\u5e94\u7684\u5c01\u88c5\u30013D \u6a21\u578b\u548c checkpoint \u8bb0\u5f55\uff0c\u4e5f\u4f1a\u4e00\u5e76\u5220\u9664\u3002",
   "imported.search": "\u641c\u7d22:",
   "imported.searchPlaceholder": "\u6309 LCSC Part \u6216\u7b26\u53f7\u540d\u7b5b\u9009",
   "imported.total": "\u603b\u6570",
@@ -1427,6 +1427,7 @@ async function deleteImportedItem(item: ImportedSymbol) {
     request: {
       source_file: item.source_file,
       symbol_name: item.symbol_name,
+      lcsc_part: item.lcsc_part,
     },
   });
 
