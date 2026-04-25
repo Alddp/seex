@@ -1,148 +1,56 @@
-<p align="center">
-  <img src="src/assets/seex.svg" alt="SeEx Logo" width="200" />
-</p>
+# SeEx 自用优化版
 
-<h1 align="center">SeEx</h1>
+这是我基于原项目改出的自用版本，重点针对 **macOS + KiCad** 工作流优化，不是通用发行版，也不承诺覆盖所有平台和旧版本兼容。
 
-<p align="center">
-  <strong>Seek &amp; Export</strong> — Clipboard Event Tracker
-</p>
+- 本仓库地址：https://github.com/Alddp/seex
+- 原项目地址：https://github.com/linkyourbin/seex
+- 许可证：CC BY-NC 4.0，继承自原项目
 
-<p align="center">
-  <img src="https://img.shields.io/badge/version-0.3.0-E8656C" alt="version" />
-  <img src="https://img.shields.io/badge/license-CC%20BY--NC%204.0-F4845F" alt="license" />
-  <img src="https://img.shields.io/badge/platform-Windows%20%7C%20macOS%20%7C%20Linux-66BB6A" alt="platform" />
-</p>
+## 和原项目的区别
 
----
+- 面向 macOS 和 KiCad 使用场景调整导出流程，Windows 未经测试。
+- 中文优先界面，移除了语言切换逻辑。
+- 增加已导入符号管理，用于查看、筛选和维护现有 `nlbn` KiCad 库。
+- 支持编辑已导入符号的符号名和 LCSC Part。
+- 支持导出/导入已导入 LCSC Part 列表，方便把现有库重新加入导出队列。
+- `nlbn` 导出内容可单独控制：符号、封装、3D 模型可以分别启用。
+- `nlbn` 覆盖策略可单独控制，避免误覆盖已有库资产。
+- `nlbn` 3D 模型路径模式可配置：自动、KiCad 项目相对路径、库相对路径。
+- 支持 `nlbn` 符号填充色覆盖。
+- 改进 `nlbn` 和 `npnp` 的导出进度反馈。
+- 增加 `npnp` 合并追加模式。
+- 增加窗口置顶开关，并持久化窗口尺寸。
+- 运行时会检查新版 `nlbn` 参数能力，避免用旧版二进制执行不兼容导出。
 
-## What is SeEx?
+这个版本会使用较新的 `nlbn` 参数，例如 `--overwrite-symbol`、`--overwrite-footprint`、`--overwrite-3d`、`--project-relative` 和 `--symbol-fill-color`，建议搭配我的 `nlbn` 自用优化版：
 
-SeEx monitors your clipboard in real time, extracts component IDs such as LCSC C-codes using smart pattern matching, and exports matched results through `nlbn` or `npnp`. It is built for electronics engineers working with component databases and library export workflows.
+https://github.com/Alddp/nlbn
 
----
+## 平台和兼容性说明
 
-## How to Use
+- 主要目标环境：macOS + KiCad。
+- Windows 未经测试。
+- 不再考虑 KiCad v5 兼容，相关兼容逻辑已经从配套 `nlbn` 中移除。
+- 这个仓库按个人工作流优化，功能取舍会优先服务自己的 KiCad 元件库维护方式。
 
-### 1. Monitor — Match component IDs from clipboard
+## TUI 状态
 
-<p align="center">
-  <img src="public/imgs/Monitor.png" alt="Monitor Page" width="700" />
-</p>
-
-The **Monitor** page is where the magic happens:
-
-- **Quick ID** — Toggle this to match when you directly copy a bare component ID like `C7470135`.
-- **Full Info** — Toggle this to extract the C-code when you copy a full component info block containing `编号：C7470135`.
-- **Monitoring** — Green means active. Click to pause or resume clipboard monitoring.
-- Both **Quick ID** and **Full Info** can be enabled at the same time, so every copy is covered.
-- The **Matched** panel shows all unique extracted IDs with timestamps. Use **Copy IDs** to copy them all, or click **Copy** on individual items.
-- The **Clipboard** panel previews the latest copied content.
-- **Save History** / **Export Matched** / **Clear All** buttons are pinned at the bottom.
-
-> **Tip:** Duplicate IDs are automatically filtered — copying the same component multiple times will not create duplicates.
-
----
-
-### 2. History — View all clipboard activity
+项目里有一个 `seex-tui` 终端入口，但目前功能不完整，且已经暂时暂停开发。它保留在仓库中，主要用于后续可能继续实验终端工作流。
 
 <p align="center">
-  <img src="public/imgs/History.png" alt="History Page" width="700" />
+  <img src="public/imgs/tui.png" alt="SeEx TUI 截图" width="700" />
 </p>
 
-The **History** page shows every clipboard entry captured while monitoring is active. Each entry shows the timestamp and a preview of the copied content. You can **Copy** or **Delete** individual entries. Up to 50 entries are stored.
-
----
-
-### 3. Export — Batch export via nlbn and npnp
+## 截图
 
 <p align="center">
-  <img src="public/imgs/Export.png" alt="Export Page" width="700" />
+  <img src="public/imgs/manager.png" alt="已导入符号管理" width="700" />
 </p>
-
-The **Export** page supports two export backends:
-
-#### `nlbn` export
-
-- Set the **export directory** by typing a path or clicking **Browse**.
-- Click **Apply** to save the path.
-- **Toggle Terminal** switches between opening a terminal window to view `nlbn` output or running silently in the background.
-- Adjust **Parallel jobs** to control the `--parallel` argument.
-- Click **Export nlbn** to batch-export all matched component IDs.
-
-#### `npnp` export
-
-- Set the **export directory** independently from `nlbn`.
-- Choose **Full**, **SchLib**, or **PcbLib** export mode.
-- Toggle batch options such as **Merge**, **Continue On Error**, and **Force**.
-- Set a **Library name** when merge mode is enabled.
-- Adjust **Parallel jobs** for non-merged batch concurrency.
-- Click **Export npnp** to export all matched component IDs with the embedded Rust `npnp` integration.
-- Merged `npnp` exports run sequentially and do not use the non-merged checkpoint flow.
-
-> **Note:** The `nlbn` CLI must be installed and available in your system `PATH` to use the `nlbn` exporter. The `npnp` exporter is linked directly into the app.
-
----
-
-### 4. About
 
 <p align="center">
-  <img src="public/imgs/About.png" alt="About Page" width="700" />
+  <img src="public/imgs/export.png" alt="导出流程" width="700" />
 </p>
-
-The **About** page shows app info, version, and the tech stack. Click on any technology chip to visit its website.
-
----
-
-## Tech Stack
-
-| | Technology | Role |
-|---|---|---|
-| <img src="src/assets/tauri.svg" width="20" /> | [Tauri](https://tauri.app) | App framework |
-| <img src="src/assets/rust.svg" width="20" /> | [Rust](https://www.rust-lang.org) | Backend logic |
-| <img src="src/assets/typescript.svg" width="20" /> | [TypeScript](https://www.typescriptlang.org) | Frontend logic |
-| <img src="src/assets/vite.svg" width="20" /> | [Vite](https://vite.dev) | Build tooling |
-|  | `nlbn` | External export CLI |
-|  | `npnp` | Embedded export backend |
-
-## Getting Started
-
-### Prerequisites
-
-- [Rust](https://rustup.rs/) (stable)
-- [Node.js](https://nodejs.org/) (v18+)
-- [Tauri CLI](https://tauri.app/start/)
-- `nlbn` in your `PATH` if you want to use the `nlbn` export option
-- The local `npnp` Rust dependency available at the path referenced by `src-tauri/Cargo.toml`
-
-### Development
-
-```bash
-npm install
-npx tauri dev
-```
-
-### Build
-
-```bash
-npx tauri build
-```
-
-Installers are generated at:
-- **Windows**: `src-tauri/target/release/bundle/msi/seex_0.3.0_x64_en-US.msi`
-- **Windows**: `src-tauri/target/release/bundle/nsis/seex_0.3.0_x64-setup.exe`
-- **macOS**: `.dmg` via GitHub Actions
-- **Linux**: `.deb` / `.AppImage` via GitHub Actions
-
-### Export Configuration
-
-- Export settings are stored in `export_config.json` next to the built executable.
-- Legacy `nlbn_config.txt` values are migrated on first load.
-- `nlbn` and `npnp` each keep their own output path and batch settings.
-- `npnp` parallel jobs apply only to non-merged batch exports.
 
 ## License
 
-This project is licensed under [CC BY-NC 4.0](https://creativecommons.org/licenses/by-nc/4.0/).
-
-Free to use, share, and adapt for non-commercial purposes with attribution.
+This project is licensed under CC BY-NC 4.0.

@@ -4,6 +4,7 @@ version = "0.3.0"
 authors = ["linkyourbin"]
 edition = "2024"
 default-run = "seex"
+publish = false
 
 [lib]
 name = "seex_lib"
