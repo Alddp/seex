@@ -566,7 +566,14 @@ fn resolve_nlbn_executable() -> Result<PathBuf, String> {
             }
         }
 
-        Err("nlbn not found".to_string())
+        Err(format!(
+            "nlbn not found. Searched PATH and common install locations: {}",
+            unix_nlbn_candidates()
+                .iter()
+                .map(|path| path.display().to_string())
+                .collect::<Vec<_>>()
+                .join(", ")
+        ))
     }
 }
 
@@ -591,6 +598,8 @@ fn unix_nlbn_candidates() -> Vec<PathBuf> {
     candidates.push(PathBuf::from("/opt/homebrew/bin/nlbn"));
     candidates.push(PathBuf::from("/usr/local/bin/nlbn"));
     candidates.push(PathBuf::from("/opt/local/bin/nlbn"));
+    candidates.push(PathBuf::from("/opt/bin/nlbn"));
+    candidates.push(PathBuf::from("/opt/nlbn"));
     candidates
 }
 
@@ -770,6 +779,8 @@ fn windows_join_args(args: &[String]) -> String {
 
 #[cfg(test)]
 mod tests {
+    #[cfg(not(target_os = "windows"))]
+    use super::unix_nlbn_candidates;
     use super::{
         ExportRequest, NlbnCapabilities, NlbnInstallation, build_nlbn_args, parse_capabilities,
         validate_installation,
@@ -857,5 +868,13 @@ Options:\n\
         assert!(!args.contains(&"--overwrite".to_string()));
         assert!(args.contains(&"--project-relative".to_string()));
         assert!(args.contains(&"--symbol-fill-color".to_string()));
+    }
+
+    #[cfg(not(target_os = "windows"))]
+    #[test]
+    fn searches_opt_nlbn_for_packaged_macos_app() {
+        let candidates = unix_nlbn_candidates();
+
+        assert!(candidates.contains(&PathBuf::from("/opt/nlbn")));
     }
 }
